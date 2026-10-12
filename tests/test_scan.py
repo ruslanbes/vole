@@ -233,7 +233,8 @@ class TestBrewFormulae(unittest.TestCase):
         }
         with mock.patch.object(brew.shutil, 'which', return_value='/usr/local/bin/brew'), \
                 mock.patch.object(brew, '_run', side_effect=lambda a: outputs[tuple(a)]), \
-                mock.patch.object(brew.subprocess, 'run', return_value=old_brew):
+                mock.patch.object(brew.subprocess, 'run', return_value=old_brew), \
+                mock.patch.object(brew, 'cask_owned_apps', return_value=set()):
             found = list(brew.discover(ScanContext(Path('/nonexistent'))))
         self.assertEqual(found, [Installed('brew-formula', 'ripgrep', ['14.1.0'])])
 
