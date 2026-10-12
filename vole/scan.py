@@ -148,7 +148,7 @@ def render(r: Report, *, tracked: int, installed: int, write: bool, had_baseline
         section(f'MISSING A REASON ({len(r.todo)}):', [f'  {n}' for n in r.todo], limit=40)
     if r.kept:
         by = collections.Counter(k for _, k in r.kept)
-        section(f'KEEP ({len(r.kept)}) — not reviewed: '
+        section(f'KEEP ({len(r.kept)}): '
                 + ', '.join(f'{v} {k}' for k, v in sorted(by.items(), key=lambda x: -x[1])), [])
     if not had_baseline:
         section(f'VERSIONS: baseline recorded, {installed} entries'
