@@ -24,7 +24,7 @@ from vole import scan, inventory, paths, versions as versions_mod  # noqa: E402
 from vole.signals import app_state, config_refs, shell_history, spotlight  # noqa: E402
 from vole.sources import (  # noqa: E402
     apps, asdf, bins, brew, cargo, mise, npm_global, ollama, pipx, pnpm_global,
-    uv_tool, yarn_global,
+    steam, uv_tool, yarn_global,
 )
 from vole.signals.base import Fact  # noqa: E402
 from vole.sources.base import Installed, ScanContext  # noqa: E402
@@ -268,6 +268,61 @@ class TestAppsSource(unittest.TestCase):
                     mock.patch.object(apps, '_app_version', return_value=''):
                 found = list(apps.discover(ctx))
             self.assertEqual(found, [Installed('app', 'Notes Helper', [])])
+
+    def test_skips_steam_shortcut_stubs(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'Applications'
+            stub = root / 'Inscryption.app'
+            (stub / 'Contents' / 'MacOS').mkdir(parents=True)
+            (stub / 'Contents' / 'MacOS' / 'run.sh').write_text(
+                '#!/bin/bash\nopen steam://run/1092790\n')
+            real = root / 'Notes.app'
+            real.mkdir(parents=True)
+            with mock.patch.object(apps, 'app_bundles', return_value=[stub, real]), \
+                    mock.patch.object(apps, '_app_version', return_value=''):
+                found = list(apps.discover(ScanContext(Path(d))))
+            self.assertEqual(found, [Installed('app', 'Notes', [])])
+
+
+class TestSteamSource(unittest.TestCase):
+    MANIFEST = (
+        '"AppState"\n{\n'
+        '\t"appid"\t\t"632470"\n'
+        '\t"name"\t\t"Disco Elysium"\n'
+        '\t"StateFlags"\t\t"4"\n'
+        '\t"buildid"\t\t"15656947"\n'
+        '}\n'
+    )
+
+    def test_parse_manifest_requires_fully_installed(self):
+        self.assertEqual(
+            steam.parse_manifest(self.MANIFEST),
+            Installed('steam', 'Disco Elysium', ['15656947']))
+        incomplete = self.MANIFEST.replace('"StateFlags"\t\t"4"', '"StateFlags"\t\t"1"')
+        self.assertIsNone(steam.parse_manifest(incomplete))
+
+    def test_discover_reads_manifests_skips_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            steamapps = (home / 'Library' / 'Application Support' / 'Steam' / 'steamapps')
+            steamapps.mkdir(parents=True)
+            (steamapps / 'appmanifest_632470.acf').write_text(self.MANIFEST)
+            (steamapps / 'libraryfolders.vdf').write_text(
+                '"libraryfolders"\n{\n\t"0"\n\t{\n'
+                f'\t\t"path"\t\t"{home / "Library" / "Application Support" / "Steam"}"\n'
+                '\t}\n}\n')
+            found = list(steam.discover(ScanContext(home)))
+            self.assertEqual(found, [Installed('steam', 'Disco Elysium', ['15656947'])])
+
+    def test_is_steam_stub(self):
+        with tempfile.TemporaryDirectory() as d:
+            stub = Path(d) / 'Game.app'
+            (stub / 'Contents' / 'MacOS').mkdir(parents=True)
+            (stub / 'Contents' / 'MacOS' / 'run.sh').write_text('open steam://run/1\n')
+            other = Path(d) / 'Notes.app'
+            other.mkdir()
+            self.assertTrue(steam.is_steam_stub(stub))
+            self.assertFalse(steam.is_steam_stub(other))
 
 
 class TestBinsSource(unittest.TestCase):

@@ -126,6 +126,7 @@ Tracks software installed from:
 
 * App Store (`/Applications`)
 * Homebrew: casks and formulae
+* Steam: games with an installed Steam appmanifest
 * Cargo: crates installed with `cargo install`
 * Go: global binaries installed with `go install`
 * pipx: Python CLIs installed with `pipx install` (shims in `~/.local/bin` are not double-counted)

@@ -1,9 +1,10 @@
-"""/Applications and ~/Applications, skipping apps owned by a cask."""
+"""/Applications and ~/Applications, skipping cask-owned apps and Steam stubs."""
 import subprocess
 from pathlib import Path
 from typing import Iterable, List
 
 from vole.sources.base import Installed, ScanContext
+from vole.sources.steam import is_steam_stub
 
 
 def app_bundles(home: Path, roots: Iterable[Path] = None) -> List[Path]:
@@ -37,6 +38,8 @@ def discover(ctx: ScanContext) -> Iterable[Installed]:
         name = app.name[:-4]
         if name in ctx.cask_owned_apps:
             continue
+        if is_steam_stub(app):
+            continue  # installed games come from steam manifests; leftovers stay hidden
         source = 'app-store' if (app / 'Contents' / '_MASReceipt' / 'receipt').exists() else 'app'
         ver = _app_version(app)
         yield Installed(source, name, [ver] if ver else [])

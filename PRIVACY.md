@@ -3,6 +3,7 @@
 To find out what is installed and when it was last used, `vole scan` reads:
 
 * App bundles in `/Applications` and `~/Applications`, and the Homebrew Caskroom
+* Steam library folders and `appmanifest_*.acf` under `~/Library/Application Support/Steam` (names and build ids only)
 * Package-manager listings, if the tool is installed: `brew`, `cargo`, `pipx`, `uv`, `npm`, `yarn`, `pnpm`, `mise`, `asdf`, plus `go version -m` on files in `~/go/bin`
 * File names in `~/.local/bin`, `~/.cargo/bin` and `~/.ollama/models`
 * Shell history: `~/.zsh_history` and fish history, for command names and dates

@@ -4,14 +4,16 @@ from typing import Dict, List, Tuple
 
 from vole.sources import (
     apps, asdf, bins, brew, cargo, mise, npm_global, ollama, pipx, pnpm_global,
-    uv_tool, yarn_global,
+    steam, uv_tool, yarn_global,
 )
 from vole.sources.base import ScanContext
 
 # Order matters twice: first source wins a name clash, and sources that publish into
 # ScanContext (brew, pipx, uv_tool) must run before the ones that read it (apps, bins).
+# steam before apps so installed games win the name; apps skips Steam stubs either way.
 SOURCES = (
     brew.discover,
+    steam.discover,
     apps.discover,
     cargo.discover,
     pipx.discover,

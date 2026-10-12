@@ -7,6 +7,7 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 ### Added
 
 - Homebrew install via `brew install ruslanbes/vole/vole`.
+- Steam source: installed games.
 
 ### Changed
 
