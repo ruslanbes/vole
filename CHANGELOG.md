@@ -8,6 +8,10 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 - Homebrew install via `brew install ruslanbes/vole/vole`.
 
+### Changed
+
+- KEEP header shortened.
+
 ## [0.1.2] - 2026-10-12
 
 ### Added
