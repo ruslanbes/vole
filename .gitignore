@@ -1,0 +1,11 @@
+# Accidental local copies next to the tool (real data lives in ~/.config/vole/).
+/software.json
+/dropped.json
+/versions.json
+/*.json.tmp
+
+# Scan / bytecode scratch.
+/.*.tmp
+__pycache__/
+*.py[cod]
+.DS_Store

@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "apps": {
+    "alfred": {
+      "source": "brew-cask",
+      "versions": [
+        "5.8,2348"
+      ]
+    },
+    "jq": {
+      "source": "brew-formula",
+      "versions": [
+        "1.7.1"
+      ]
+    },
+    "python": {
+      "source": "mise",
+      "versions": [
+        "3.12.8",
+        "3.13.15"
+      ]
+    }
+  }
+}

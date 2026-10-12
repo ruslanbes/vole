@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [Unreleased]
+
+<!-- Move significant work here as it lands; promote to a dated section on release (see dev/RELEASE.md). Cleanup of finished tasks: see dev/CLEANUP.md. -->
+
+## [0.1.0] - 2026-10-12
+
+### Added
+
+- Initial product version: macOS CLI that scans installed software and records why each piece is there.
+- Sources: Homebrew formulae and casks, Applications, cargo, pipx, uv tool, npm/yarn/pnpm globals, asdf, mise, ollama, `~/.local/bin`.
+- Usage signals: shell history (zsh, fish), Spotlight last-used, Library app-state mtimes, config-file references.
+- Commands: `scan` / `scan --dry-run`, `list`, `edit`, `add`, `restore`, `delete`, `reset`, `--version`.
+- Inventory in `~/.config/vole/` (`software.json`, `dropped.json`, `versions.json`).
+- Install via `install.sh` (curl or local checkout). Homebrew tap planned separately.
