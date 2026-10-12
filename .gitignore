@@ -4,6 +4,9 @@
 /versions.json
 /*.json.tmp
 
+# VSCode Workspace
+/*.code-workspace
+
 # Scan / bytecode scratch.
 /.*.tmp
 __pycache__/
