@@ -83,7 +83,7 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - status: ready
 - goal: Users can install vole via a personal Homebrew tap (not core).
 - done_when: See `dev/tasks/homebrew-formula.md`.
-- notes: OQs locked — tap `homebrew-vole`; tagged release url+sha256; name free. After `v0.1.0`: formula should call into `vole.cli.main` (or `python3 -m vole`), then reorder README Install (review 2.2).
+- notes: Formula + tap README written locally for `v0.1.2`; vole README brew-first. Push tap + CLT update needed before `brew install` smoke on this machine.
 
 ## scan-auto-archive
 - status: done

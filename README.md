@@ -47,15 +47,19 @@ why they were there. Neither does the other's job.
 ## Install
 
 ```sh
+brew install ruslanbes/vole/vole
+```
+
+Or without Homebrew:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/ruslanbes/vole/main/install.sh | sh
 ```
 
-Puts the CLI on `~/.local/bin` (add that directory to your `PATH` if needed). Needs
+Curl puts the CLI on `~/.local/bin` (add that directory to your `PATH` if needed). Needs
 macOS with Command Line Tools `python3` 3.9+. Re-run anytime to refresh from `main`.
 
 Or from a clone: `./install.sh`, or run `bin/vole` / `python3 -m vole` without installing.
-
-Homebrew formula is planned separately.
 
 ## Use
 

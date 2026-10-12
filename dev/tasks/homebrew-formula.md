@@ -1,9 +1,9 @@
 # Ship a Homebrew formula via a personal tap
 
 - **Task ID:** `homebrew-formula`
-- **Status:** ready
-- **Progress:** local tap at `/opt/homebrew/Library/Taps/ruslanbes/homebrew-vole/`; GitHub `homebrew-vole` repo created. Still need `Formula/vole.rb` + a tagged vole release (`url`/`sha256`).
-- **Blocked by:** `pre-release-review` (first tag waits on its **B** items)
+- **Status:** in progress
+- **Progress:** `Formula/vole.rb` for `v0.1.2` (system `python3`, `vole.cli.main` launcher) + tap README written; vole README brew-first. Local `brew install` blocked by outdated CLT (macOS 26 needs Xcode CLT 27) — formula layout smoke-tested manually. Still need: push tap, re-test after CLT update.
+- **Blocked by:** _none_
 - **Related:** `curl-install`
 - **Upstream:** https://github.com/ruslanbes/vole/
 

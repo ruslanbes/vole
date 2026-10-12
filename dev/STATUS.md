@@ -4,11 +4,11 @@ Last updated: 2026-10-12
 
 ## Current focus
 
-`v0.1.2` prepared (push CI + brew test fix). Tag after commit so the release workflow runs.
+`homebrew-formula` — local `Formula/vole.rb` for `v0.1.2`; push tap and smoke-test install.
 
 ## Active task
 
-_None._ Next after a successful GitHub Release: `homebrew-formula`.
+`homebrew-formula`
 
 ## Blockers
 
@@ -16,9 +16,10 @@ _None._
 
 ## Next action
 
-1. Commit `__version__` / CHANGELOG / test fix / `.github/workflows/test.yml` / STATUS (task docs kept).
-2. `git push origin HEAD` first, then `git tag -a v0.1.2 -m "Release 0.1.2"` and `git push origin v0.1.2`.
-3. Confirm Tests (on push) and Release (on tag) both green, then `homebrew-formula`.
+1. Update Command Line Tools (Xcode 27) — local `brew install` is blocked until then.
+2. Commit + push `ruslanbes/homebrew-vole` (`Formula/vole.rb`, tap README).
+3. `brew install ruslanbes/vole/vole` / `brew test vole` / `vole --version`.
+4. Commit vole README + CHANGELOG Unreleased (task docs kept).
 
 ## Session notes
 

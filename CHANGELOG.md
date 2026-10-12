@@ -4,7 +4,9 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
-<!-- Move significant work here as it lands; promote to a dated section on release (see dev/RELEASE.md). Cleanup of finished tasks: see dev/CLEANUP.md. -->
+### Added
+
+- Homebrew install via `brew install ruslanbes/vole/vole`.
 
 ## [0.1.2] - 2026-10-12
 
