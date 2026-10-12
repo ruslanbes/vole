@@ -6,6 +6,12 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 <!-- Move significant work here as it lands; promote to a dated section on release (see dev/RELEASE.md). Cleanup of finished tasks: see dev/CLEANUP.md. -->
 
+## [0.1.1] - 2026-10-12
+
+### Added
+
+- GitHub Actions release workflow.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added

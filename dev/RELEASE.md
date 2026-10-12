@@ -50,4 +50,8 @@ git tag -a vX.Y.Z -m "Release X.Y.Z"
 git push origin HEAD --tags
 ```
 
-<!-- Adjust branch name, CI, and deploy verification for this project. -->
+Pushing a `v*` tag runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+tests on Python 3.9 and 3.12, checks `__version__` matches the tag (without the `v`), then
+creates a GitHub Release (source archives are attached automatically — what Homebrew needs).
+
+<!-- Adjust branch name and deploy verification for this project. -->
