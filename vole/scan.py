@@ -36,12 +36,31 @@ class Report:
                     or self.archived_now or self.restored_now or self.versions_moved())
 
 
+def live_newest(facts: List[Fact]) -> str:
+    """Newest YYYY-MM-DD among dated facts, or ''."""
+    newest = ''
+    for fact in facts:
+        if fact.date and fact.date > newest:
+            newest = fact.date
+    return newest
+
+
+def effective_last_used(stored: str, live: str, today: str = '') -> str:
+    """max(stored, live), optionally capped at today."""
+    effective = stored if stored >= live else live
+    if today and effective > today:
+        return today
+    return effective
+
+
 def classify(entries: Dict, archived: Dict, installed: Installed,
-             facts: Dict[str, List[Fact]], cutoff: str, prev_versions: Dict) -> Report:
-    """Pure: no I/O. cutoff is YYYY-MM-DD; older dated signals make an entry stale."""
+             facts: Dict[str, List[Fact]], cutoff: str, prev_versions: Dict,
+             today: str = '') -> Report:
+    """Pure: no I/O. cutoff is YYYY-MM-DD; older effective last-used makes an entry stale."""
     r = Report()
 
-    for name, (src, _vs) in sorted(installed.items()):
+    by_name = inventory.name_sort_key
+    for name, (src, _vs) in sorted(installed.items(), key=lambda kv: by_name(kv[0])):
         if name in archived:
             a = archived[name]
             r.resurrected.append((name, 'pruned as dropped (' + a.get('added', '') + '): '
@@ -49,7 +68,7 @@ def classify(entries: Dict, archived: Dict, installed: Installed,
         elif name not in entries:
             r.new.append((name, src))
 
-    for name, kv in sorted(entries.items()):
+    for name, kv in sorted(entries.items(), key=lambda kv: by_name(kv[0])):
         status = kv.get('status', '')
         if status == 'dropped':
             if name in installed:
@@ -64,19 +83,17 @@ def classify(entries: Dict, archived: Dict, installed: Installed,
         if kept:
             r.kept.append((name, kept))
             continue
-        labels, newest = [], None
-        for fact in facts.get(name, []):
-            labels.append(fact.label)
-            if fact.date:
-                newest = max(newest or '', fact.date)
+        flist = facts.get(name, [])
+        labels = [f.label for f in flist]
+        live = live_newest(flist)
+        stored = kv.get('last_used') or ''
+        effective = effective_last_used(stored, live, today)
         src, vs = installed[name]
         ver = ', '.join(sorted(vs)) or '-'
-        if newest and newest < cutoff:
-            r.stale.append((name, src, ver,
-                            f'no signal since {newest} ({"; ".join(labels)})'))
-        elif not labels and status == 'active':
-            r.stale.append((name, src, ver,
-                            'no usage signal at all — needs a manual look'))
+        if effective and effective < cutoff:
+            r.stale.append((name, src, ver, f'no usage since {effective}'))
+        elif not labels and not effective and status == 'active':
+            r.stale.append((name, src, ver, 'no usage at all'))
 
     # versions.json records every installed name; the diff only covers detectable versions,
     # so unversioned installs never show up as "+ (none)" / "- gone".
@@ -87,15 +104,33 @@ def classify(entries: Dict, archived: Dict, installed: Installed,
     return r
 
 
-def apply_auto_moves(entries: Dict, archived: Dict, installed: Installed, report: Report) -> None:
+def apply_last_used(entries: Dict, facts: Dict[str, List[Fact]], today: str) -> None:
+    """Advance entry last_used when a newer dated signal is seen. Mutates entries."""
+    for name, kv in list(entries.items()):
+        if kv.get('status') == 'dropped':
+            continue
+        live = live_newest(facts.get(name, []))
+        stored = kv.get('last_used') or ''
+        effective = effective_last_used(stored, live, today)
+        if effective and effective > stored:
+            updated = dict(kv)
+            updated['last_used'] = effective
+            entries[name] = updated
+
+
+def apply_auto_moves(entries: Dict, archived: Dict, installed: Installed, report: Report,
+                     versions: Dict = None) -> None:
     """Archive gone entries; restore non-sticky dropped that are installed again.
 
     Mutates entries, archived, and report in place. Call only on write scans.
+    ``versions`` is the pre-scan versions.json map (source copied onto archives).
     """
+    versions = versions or {}
     for name in list(report.gone):
         if name not in entries:
             continue
         entry = inventory.mark_scan_drop(entries[name])
+        entry = inventory.attach_drop_source(entry, name, versions)
         archived[name] = entry
         del entries[name]
         report.archived_now.append(name)
@@ -189,6 +224,8 @@ def run(data_root: Path = None, home: Path = None, months: int = 6, write: bool 
         print(f'created {software}', file=sys.stderr)
 
     try:
+        from vole.migrations import apply_pending
+        apply_pending(data_root)
         entries = inventory.load(software)
         archived = inventory.load(dropped, missing_ok=True)
         prev_versions = inventory.load(vpath, missing_ok=True)
@@ -209,16 +246,19 @@ def run(data_root: Path = None, home: Path = None, months: int = 6, write: bool 
 
     installed = discover_all(home)
     today = datetime.date.today()
+    today_s = today.isoformat()
     cutoff = (today - datetime.timedelta(days=months * 30)).isoformat()
     facts = collect_all(home, list(entries) + list(archived) + list(installed))
-    report = classify(entries, archived, installed, facts, cutoff, prev_versions)
+    report = classify(entries, archived, installed, facts, cutoff, prev_versions,
+                      today=today_s)
 
     had_baseline = vpath.exists()
     if write:
-        apply_auto_moves(entries, archived, installed, report)
+        apply_auto_moves(entries, archived, installed, report, versions=prev_versions)
         if report.new:
-            for name, src in report.new:
-                entries[name] = inventory.stub(src, today.isoformat())
+            for name, _src in report.new:
+                entries[name] = inventory.stub(today_s)
+        apply_last_used(entries, facts, today_s)
         inventory.save(software, entries)
         inventory.save(dropped, archived)
         inventory.save(vpath, {n: {'source': s, 'versions': sorted(vs)}

@@ -1,36 +1,45 @@
 # ADR-008: Inventory format versioning
 
-- **Status:** Acccepted
-- **Date:** 2026-10-12
+- **Status:** Accepted
+- **Date:** 2026-10-13
 
 ## Context
 
-Software inventory file staretd with `"format": 1` as format version identifier. We need clear rules
-about compatibility and when we bump the version.
+Inventory JSON files carry a top-level `format` integer. We need a single rule for when
+that number changes, how migrations run, and how old or newer vole binaries behave.
 
 ## Decision
 
-`FORMAT` changes only for breaking changes. Adding new fields does not change the number.
+**Every registered migration bumps `format` by 1.** The integer is the migration epoch:
+file at format `N` has all migrations through step `N` applied. Code’s `FORMAT` is the
+latest epoch this vole knows how to read and write.
 
-
-| Change                                         | Bump `FORMAT`? | Action                                       |
-| ---------------------------------------------- | -------------- | -------------------------------------------- |
-| New optional field                             | No             | Add it to `ENTRY_FIELDS` / `VERSION_FIELDS`. |
-| New allowed value (e.g. a status)              | No             | Add it to `STATUSES`.                        |
-| Rename a field                                 | Yes            | Migration                                    |
-| Change a field's type or meaning               | Yes            | Migration                                    |
-| Remove a field that holds hand-written text    | Yes            | Migration                                    |
-| Change the top-level shape (`format` / `apps`) | Yes            | Migration                                    |
-
+| Situation | Bump `format`? | Action |
+|-----------|----------------|--------|
+| New optional field, code reads missing as absent, no rewrite needed | No | Just start writing the field; no migration module |
+| Any change that needs a one-shot rewrite (strip/rename/remove/retype/reshape) | Yes | Add a migration module; `FORMAT` becomes `N+1` |
+| Rename / remove hand-written fields, type or meaning change, top-level reshape | Yes | Same — always via a migration |
 
 Migration rules:
 
-1. The new vole reads format `N-1` and rewrites it as `N`. The command
-  is either `vole migrate` or automatic on first load.
-2. Before rewriting, it keeps a copy of the old file next to it, e.g.
-  `software.json.format1.bak`.
-3. A vole that finds a **newer** format than it knows refuses the file and says to upgrade.
+1. Migrations live as an ordered registry. Step `k`
+   transforms files from format `k` to `k+1` (formats are 1-based epochs matching
+   “after migration k”).
+2. On load (or `vole migrate`), while `file.format < CODE_FORMAT`, apply the next step,
+   write a bak, rewrite the file at `format + 1`.
+3. Before rewriting, keep a copy beside the file, e.g. `software.json.format1.bak`
+   (source format in the name).
+4. If `file.format > CODE_FORMAT`, refuse and ask the user to upgrade vole.
+5. If `file.format <` the oldest format this build can still migrate from, refuse with a
+   clear “upgrade via intermediate vole” / restore-from-bak message (floor documented
+   when old steps are deleted).
+
+Retiring migrations: delete the oldest module(s) and raise the minimum supported
+input format only when wild installs are past that floor.
 
 ## Consequences
 
-- Most schema work (new optional fields) needs no migration code.
+- One number answers “which world is this file in?”.
+- Old vole cannot read a file after a cleanup migration (format moved on); that is
+  accepted — upgrade vole, or restore the bak.
+- Additive fields that need no rewrite still do not require a migration or bump.

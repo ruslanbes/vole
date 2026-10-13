@@ -6,6 +6,7 @@
 Import the package normally. File-only modes run against a temp VOLE_DATA_DIR.
 Discovery/signal unit tests use fixtures, not the live machine.
 """
+import datetime
 import io
 import json
 import os
@@ -113,12 +114,11 @@ class TestParse(unittest.TestCase):
 
     def test_wrong_format_is_refused(self):
         with self.assertRaises(ValueError):
-            inventory.parse('{"format": 2, "apps": {}}')
+            inventory.parse('{"format": 1, "apps": {}}')
 
 
 class TestSetField(unittest.TestCase):
-    ENTRY = {'source': 'brew-formula', 'why': 'old reason',
-             'added': '2026-01-01', 'status': 'active'}
+    ENTRY = {'why': 'old reason', 'added': '2026-01-01', 'status': 'active'}
 
     def test_replace_leaves_other_fields(self):
         out = inventory.set_field(self.ENTRY, 'why', 'new reason')
@@ -138,9 +138,18 @@ class TestCheckApps(unittest.TestCase):
                 inventory.check_apps(apps, name, versions_file=versions_file), [])
 
     def test_unknown_field(self):
-        apps = {'jq': {'source': 'brew-formula', 'why': 'x', 'projects': []}}
+        apps = {'jq': {'why': 'x', 'projects': []}}
         probs = inventory.check_apps(apps, 'software.json')
         self.assertTrue(any('unknown field' in p and 'projects' in p for p in probs))
+
+    def test_active_source_is_obsolete(self):
+        apps = {'jq': {'source': 'brew-formula', 'why': 'x', 'status': 'active'}}
+        probs = inventory.check_apps(apps, 'software.json')
+        self.assertTrue(any('source on active' in p for p in probs))
+
+    def test_dropped_source_is_ok(self):
+        apps = {'jq': {'source': 'brew-formula', 'why': 'x', 'status': 'dropped'}}
+        self.assertEqual(inventory.check_apps(apps, 'software.json'), [])
 
     def test_unknown_status(self):
         apps = {'jq': {'status': 'archived'}}
@@ -674,6 +683,26 @@ class TestShellHistorySignal(unittest.TestCase):
             self.assertNotIn('broken', out)
             self.assertEqual(out['jq'][0].date, '2026-01-15')
 
+    def test_bash_untimestamped_uses_file_mtime_guess(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            hist = home / '.bash_history'
+            hist.write_text('curl example.com\nrg TODO\n')
+            day = datetime.date.fromtimestamp(hist.stat().st_mtime).isoformat()
+            out = shell_history.collect(ScanContext(home))
+            self.assertEqual(out['rg'][0].date, day)
+            self.assertEqual(out['curl'][0].date, day)
+
+    def test_timestamped_hit_wins_over_untimestamped_guess(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            (home / '.zsh_history').write_bytes(
+                b': 1768435200:0;jq .\n'
+                b'jq older-plain-line\n'
+            )
+            out = shell_history.collect(ScanContext(home))
+            self.assertEqual(out['jq'][0].date, '2026-01-15')
+
 
 class TestSpotlightSignal(unittest.TestCase):
     APPS = [Path('/Applications/A.app'), Path('/Applications/B.app'), Path('/Applications/C.app')]
@@ -782,25 +811,96 @@ class TestCLI(unittest.TestCase):
     def vole(self, *args):
         return run_vole(*args, data_dir=self.d)
 
-    def test_edit_sets_fields(self):
-        r = self.vole('edit', 'jq', '--why', 'JSON on the command line', '--keep', 'in-use')
+    def test_get_shows_entry_and_versions(self):
+        r = self.vole('get', 'jq')
         self.assertEqual(r.returncode, 0, r.stderr)
-        e = self.parsed()['jq']
-        self.assertEqual(e['why'], 'JSON on the command line')
-        self.assertEqual(e['keep'], 'in-use')
+        self.assertIn('jq\n', r.stdout)
+        self.assertIn('why', r.stdout)
+        self.assertIn('TODO', r.stdout)
+        self.assertNotIn('source', r.stdout.split('versions:')[0])
+        self.assertIn('versions:', r.stdout)
+        self.assertIn('brew-formula', r.stdout)
+        self.assertIn('1.7.1', r.stdout)
 
-    def test_edit_rejects_unknown_status(self):
-        before = (self.d / 'software.json').read_bytes()
-        for bad in ('foo', ''):
-            r = self.vole('edit', 'jq', '--status', bad)
-            self.assertEqual(r.returncode, 2)
-            self.assertIn('invalid choice', r.stderr)
-        self.assertEqual((self.d / 'software.json').read_bytes(), before)
+    def test_get_dropped_no_file_suffix(self):
+        self.assertEqual(self.vole('drop', 'alfred').returncode, 0)
+        r = self.vole('get', 'alfred')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(r.stdout.startswith('alfred\n'))
+        self.assertNotIn('dropped.json', r.stdout)
+        self.assertIn('"dropped"', r.stdout)
+
+    def test_get_missing_entry(self):
+        r = self.vole('get', 'nosuch')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no entry named', r.stderr)
+
+    def test_get_versions_only_refuses(self):
+        r = self.vole('get', 'python')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('only in versions.json', r.stderr)
+        self.assertIn('scan', r.stderr)
+
+    def test_why_reads_text_only(self):
+        r = self.vole('why', 'jq')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, 'TODO\n')
+
+    def test_why_writes_and_prints_entry(self):
+        r = self.vole('why', 'jq', 'JSON on the command line')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.parsed()['jq']['why'], 'JSON on the command line')
+        self.assertIn('* why', r.stdout)
+
+    def test_why_empty_clears_like_edit(self):
+        self.assertEqual(self.vole('why', 'jq', 'temporary').returncode, 0)
+        r = self.vole('why', 'jq', '')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('why', self.parsed()['jq'])
+
+    def test_why_missing_entry(self):
+        r = self.vole('why', 'kubelogin')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no entry named', r.stderr)
+
+    def test_why_reads_dropped(self):
+        self.assertEqual(self.vole('drop', 'alfred').returncode, 0)
+        r = self.vole('why', 'alfred')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), self.parsed('dropped.json')['alfred']['why'])
+
+    def test_keep_writes_and_prints_entry(self):
+        r = self.vole('keep', 'jq', 'mdm')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.parsed()['jq']['keep'], 'mdm')
+        self.assertIn('* keep', r.stdout)
+
+    def test_keep_empty_clears_like_edit(self):
+        self.assertEqual(self.vole('keep', 'jq', 'mdm').returncode, 0)
+        r = self.vole('keep', 'jq', '')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn('keep', self.parsed()['jq'])
+
+    def test_keep_missing_entry(self):
+        r = self.vole('keep', 'nosuch', 'mdm')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no entry named', r.stderr)
+
+    def test_keep_writes_dropped(self):
+        self.assertEqual(self.vole('drop', 'alfred').returncode, 0)
+        r = self.vole('keep', 'alfred', 'in-use')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.parsed('dropped.json')['alfred']['keep'], 'in-use')
+
+    def test_keep_bare_name_is_usage_error(self):
+        r = self.vole('keep', 'jq')
+        self.assertEqual(r.returncode, 2)
+        self.assertTrue(r.stderr)
 
     def test_write_error_is_reported_without_traceback(self):
         self.d.chmod(0o500)
         try:
-            r = self.vole('edit', 'jq', '--why', 'x')
+            r = self.vole('why', 'jq', 'x')
         finally:
             self.d.chmod(0o700)
         self.assertEqual(r.returncode, 1)
@@ -810,7 +910,7 @@ class TestCLI(unittest.TestCase):
                          ['software.json', 'versions.json'])
 
     def test_restore_keeps_entry_when_software_write_fails(self):
-        self.assertEqual(self.vole('edit', 'alfred', '--status', 'dropped').returncode, 0)
+        self.assertEqual(self.vole('drop', 'alfred').returncode, 0)
         real_save = inventory.save
 
         def failing_save(path, apps):
@@ -827,8 +927,8 @@ class TestCLI(unittest.TestCase):
         self.assertIn('Permission denied', err.getvalue())
         self.assertIn('alfred', self.parsed('dropped.json'))
 
-    def test_edit_rejects_unknown_name(self):
-        r = self.vole('edit', 'kubelogin', '--why', 'x')
+    def test_why_suggests_close_name(self):
+        r = self.vole('why', 'kubelogin', 'x')
         self.assertEqual(r.returncode, 1)
         self.assertIn('azure/kubelogin/kubelogin', r.stderr)
 
@@ -852,16 +952,7 @@ class TestCLI(unittest.TestCase):
         self.assertIn('my-script', r.stdout)
         self.assertIn('local-bin', r.stdout)
 
-    def test_edit_status_dropped_archives(self):
-        r = self.vole('edit', 'alfred', '--status', 'dropped')
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertNotIn('alfred', self.parsed())
-        self.assertIn('alfred', self.parsed('dropped.json'))
-        self.assertEqual(self.parsed('dropped.json')['alfred']['status'], 'dropped')
-        self.assertEqual(self.parsed('dropped.json')['alfred']['archived_by'], 'user')
-        self.assertIn('archived', r.stdout)
-
-    def test_drop_aliases_edit_status_dropped(self):
+    def test_drop_archives_with_archived_by_user(self):
         r = self.vole('drop', 'alfred')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn('alfred', self.parsed())
@@ -871,16 +962,16 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(dropped['archived_by'], 'user')
         self.assertIn('archived', r.stdout)
 
-    def test_edit_dropped_entry_in_place(self):
-        self.vole('edit', 'alfred', '--status', 'dropped')
-        r = self.vole('edit', 'alfred', '--why', 'no longer needed')
+    def test_why_updates_dropped_entry(self):
+        self.vole('drop', 'alfred')
+        r = self.vole('why', 'alfred', 'no longer needed')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn('alfred', self.parsed())
         self.assertEqual(self.parsed('dropped.json')['alfred']['why'], 'no longer needed')
 
-    def test_edit_status_active_restores(self):
-        self.vole('edit', 'alfred', '--status', 'dropped')
-        r = self.vole('edit', 'alfred', '--status', 'active', '--why', 'back')
+    def test_restore_with_why(self):
+        self.vole('drop', 'alfred')
+        r = self.vole('restore', 'alfred', '--why', 'back')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('alfred', self.parsed())
         self.assertNotIn('alfred', self.parsed('dropped.json'))
@@ -888,7 +979,7 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(self.parsed()['alfred']['status'], 'active')
 
     def test_restore(self):
-        self.vole('edit', 'alfred', '--status', 'dropped')
+        self.vole('drop', 'alfred')
         r = self.vole('restore', 'alfred')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('alfred', self.parsed())
@@ -900,40 +991,50 @@ class TestCLI(unittest.TestCase):
         self.assertIn('dropped.json', r.stderr)
 
     def test_add_creates(self):
-        r = self.vole('add', 'manual-tool', '--source', 'local-bin', '--why', 'hand install')
+        r = self.vole('add', 'manual-tool', '--why', 'hand install')
         self.assertEqual(r.returncode, 0, r.stderr)
         e = self.parsed()['manual-tool']
-        self.assertEqual(e['source'], 'local-bin')
+        self.assertNotIn('source', e)
         self.assertEqual(e['why'], 'hand install')
         self.assertEqual(e['status'], 'active')
 
     def test_add_refuses_existing_software(self):
-        r = self.vole('add', 'jq', '--source', 'brew-formula')
+        r = self.vole('add', 'jq')
         self.assertEqual(r.returncode, 1)
         self.assertIn('already', r.stderr)
 
     def test_add_undrops_from_dropped(self):
-        self.vole('edit', 'alfred', '--status', 'dropped')
+        self.vole('drop', 'alfred')
         r = self.vole('add', 'alfred', '--why', 'need it again')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('alfred', self.parsed())
         self.assertNotIn('alfred', self.parsed('dropped.json'))
         self.assertEqual(self.parsed()['alfred']['why'], 'need it again')
+        self.assertNotIn('source', self.parsed()['alfred'])
 
-    def test_add_requires_source_when_new(self):
-        r = self.vole('add', 'brand-new')
-        self.assertEqual(r.returncode, 2)
-        self.assertIn('--source', r.stderr)
+    def test_drop_copies_source_from_versions(self):
+        r = self.vole('drop', 'alfred')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        e = self.parsed('dropped.json')['alfred']
+        self.assertEqual(e['source'], 'brew-cask')
+        self.assertEqual(e['archived_by'], 'user')
 
-    def test_delete_force(self):
-        r = self.vole('delete', 'jq', '--force')
+    def test_drop_warns_when_versions_source_missing(self):
+        r = self.vole('drop', 'azure/kubelogin/kubelogin')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        e = self.parsed('dropped.json')['azure/kubelogin/kubelogin']
+        self.assertNotIn('source', e)
+        self.assertIn('no versions source', r.stderr)
+
+    def test_purge_force(self):
+        r = self.vole('purge', 'jq', '--force')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn('jq', self.parsed())
         self.assertNotIn('jq', self.parsed('versions.json'))
 
-    def test_delete_from_dropped(self):
-        self.vole('edit', 'alfred', '--status', 'dropped')
-        r = self.vole('delete', 'alfred', '--force')
+    def test_purge_from_dropped(self):
+        self.vole('drop', 'alfred')
+        r = self.vole('purge', 'alfred', '--force')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn('alfred', self.parsed())
         self.assertNotIn('alfred', self.parsed('dropped.json'))
@@ -944,6 +1045,7 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn('usage:', r.stdout)
             self.assertIn('scan', r.stdout)
+            self.assertNotIn('  edit', r.stdout)
 
     def test_version(self):
         from vole import __version__
@@ -1003,8 +1105,8 @@ class TestCLI(unittest.TestCase):
             shutil.rmtree(empty)
 
 
-def entry(why='because', status='active', source='app', **kw):
-    return dict(source=source, why=why, added='2026-01-01', status=status, **kw)
+def entry(why='because', status='active', **kw):
+    return dict(why=why, added='2026-01-01', status=status, **kw)
 
 
 class TestClassify(unittest.TestCase):
@@ -1062,11 +1164,32 @@ class TestClassify(unittest.TestCase):
         }
         r = self.classify(entries, installed, facts=facts)
         self.assertEqual(r.stale, [
-            ('old', 'brew-formula', '1.7.1',
-             'no signal since 2025-12-01 (shell 2025-12-01; referenced in .zshrc)'),
-            ('silent', 'local-bin', '-',
-             'no usage signal at all — needs a manual look'),
+            ('old', 'brew-formula', '1.7.1', 'no usage since 2025-12-01'),
+            ('silent', 'local-bin', '-', 'no usage at all'),
         ])
+
+    def test_stored_last_used_survives_missing_live_signal(self):
+        r = self.classify(
+            {'jq': entry(last_used='2025-12-01')},
+            {'jq': ('brew-formula', ['1.7.1'])},
+            facts={})
+        self.assertEqual(r.stale, [
+            ('jq', 'brew-formula', '1.7.1', 'no usage since 2025-12-01'),
+        ])
+
+    def test_live_newer_than_stored_uses_live_for_staleness(self):
+        r = self.classify(
+            {'jq': entry(last_used='2025-01-01')},
+            {'jq': ('brew-formula', ['1.7'])},
+            facts={'jq': [Fact('shell 2026-09-01', '2026-09-01')]})
+        self.assertEqual(r.stale, [])
+
+    def test_older_live_does_not_rewind_effective(self):
+        r = self.classify(
+            {'jq': entry(last_used='2025-12-01')},
+            {'jq': ('brew-formula', ['1.7'])},
+            facts={'jq': [Fact('shell 2025-06-01', '2025-06-01')]})
+        self.assertEqual(r.stale[0][3], 'no usage since 2025-12-01')
 
     def test_version_diff_ignores_unversioned(self):
         r = self.classify({}, {'jq': ('brew-formula', ['1.8.0']), 'script': ('local-bin', [])},
@@ -1102,11 +1225,11 @@ class TestRender(unittest.TestCase):
 
     def test_drop_candidates_show_version_and_source(self):
         r = scan.Report(stale=[
-            ('jq', 'brew-formula', '1.7.1', 'no usage signal at all — needs a manual look'),
+            ('jq', 'brew-formula', '1.7.1', 'no usage at all'),
         ])
         text = self.render(r)
         self.assertIn('DROP CANDIDATES (1):', text)
-        self.assertRegex(text, r'jq\s+1\.7\.1\s+brew-formula\s+no usage signal')
+        self.assertRegex(text, r'jq\s+1\.7\.1\s+brew-formula\s+no usage at all')
 
 
 class TestScanVersions(unittest.TestCase):
@@ -1141,13 +1264,79 @@ class TestScanVersions(unittest.TestCase):
         self.assertNotIn('VERSIONS', report)
 
 
+class TestPersistLastUsed(unittest.TestCase):
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        self.home = Path(tempfile.mkdtemp())
+        inventory.save(self.d / 'software.json', {
+            'jq': entry(why='JSON', last_used='2025-06-01'),
+            'silent': entry(why='bin'),
+        })
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+        shutil.rmtree(self.home)
+
+    def scan(self, installed, facts, write=True):
+        out = io.StringIO()
+        with mock.patch.object(scan, 'discover_all', return_value=installed), \
+                mock.patch.object(scan, 'collect_all', return_value=facts), \
+                mock.patch('sys.stdout', out), mock.patch('sys.stderr', io.StringIO()):
+            rc = scan.run(data_root=self.d, home=self.home, write=write)
+        self.assertEqual(rc, 0)
+        return out.getvalue()
+
+    def test_write_advances_newer_and_keeps_older_absent(self):
+        self.scan(
+            {'jq': ('brew-formula', ['1.7']), 'silent': ('local-bin', [])},
+            {'jq': [Fact('shell 2026-09-01', '2026-09-01')]})
+        soft = inventory.load(self.d / 'software.json')
+        self.assertEqual(soft['jq']['last_used'], '2026-09-01')
+        self.assertNotIn('last_used', soft['silent'])
+
+    def test_older_live_does_not_rewrite_stored(self):
+        self.scan(
+            {'jq': ('brew-formula', ['1.7']), 'silent': ('local-bin', [])},
+            {'jq': [Fact('shell 2025-01-01', '2025-01-01')]})
+        soft = inventory.load(self.d / 'software.json')
+        self.assertEqual(soft['jq']['last_used'], '2025-06-01')
+
+    def test_absent_live_keeps_stored(self):
+        self.scan(
+            {'jq': ('brew-formula', ['1.7']), 'silent': ('local-bin', [])},
+            {})
+        soft = inventory.load(self.d / 'software.json')
+        self.assertEqual(soft['jq']['last_used'], '2025-06-01')
+
+    def test_dry_run_does_not_write_last_used(self):
+        self.scan(
+            {'jq': ('brew-formula', ['1.7']), 'silent': ('local-bin', [])},
+            {'jq': [Fact('shell 2026-09-01', '2026-09-01')]},
+            write=False)
+        soft = inventory.load(self.d / 'software.json')
+        self.assertEqual(soft['jq']['last_used'], '2025-06-01')
+
+    def test_first_sighting_stub_gets_live_date(self):
+        inventory.save(self.d / 'software.json', {})
+        self.scan(
+            {'rg': ('brew-formula', ['14'])},
+            {'rg': [Fact('shell 2026-09-01', '2026-09-01')]})
+        soft = inventory.load(self.d / 'software.json')
+        self.assertEqual(soft['rg']['last_used'], '2026-09-01')
+        self.assertNotIn('source', soft['rg'])
+
+
 class TestAutoArchive(unittest.TestCase):
     def setUp(self):
         self.d = Path(tempfile.mkdtemp())
         self.home = Path(tempfile.mkdtemp())
         inventory.save(self.d / 'software.json', {
-            'jq': entry(why='JSON', source='brew-formula'),
-            'gone-tool': entry(why='old', source='cargo'),
+            'jq': entry(why='JSON'),
+            'gone-tool': entry(why='old'),
+        })
+        inventory.save(self.d / 'versions.json', {
+            'jq': {'source': 'brew-formula', 'versions': ['1.7']},
+            'gone-tool': {'source': 'cargo', 'versions': ['0.1']},
         })
 
     def tearDown(self):
@@ -1172,6 +1361,7 @@ class TestAutoArchive(unittest.TestCase):
         self.assertNotIn('gone-tool', soft)
         self.assertEqual(arch['gone-tool']['archived_by'], 'scan')
         self.assertEqual(arch['gone-tool']['why'], 'old')
+        self.assertEqual(arch['gone-tool']['source'], 'cargo')
 
     def test_dry_run_does_not_archive(self):
         text = self.scan({'jq': ('brew-formula', ['1.7'])}, write=False)
@@ -1187,11 +1377,12 @@ class TestAutoArchive(unittest.TestCase):
             'gone-tool': ('cargo', ['1.0']),
         })
         self.assertIn('RESTORED — reinstalled after auto-archive (1):', text)
-        self.assertIn('gone-tool', inventory.load(self.d / 'software.json'))
+        restored = inventory.load(self.d / 'software.json')['gone-tool']
+        self.assertNotIn('source', restored)
         self.assertNotIn('gone-tool', inventory.load(self.d / 'dropped.json', missing_ok=True))
 
     def test_legacy_dropped_without_archived_by_restores(self):
-        inventory.save(self.d / 'software.json', {'jq': entry(why='JSON', source='brew-formula')})
+        inventory.save(self.d / 'software.json', {'jq': entry(why='JSON')})
         inventory.save(self.d / 'dropped.json', {
             'legacy': entry(why='was dropped', status='dropped', source='app'),
         })
@@ -1200,11 +1391,12 @@ class TestAutoArchive(unittest.TestCase):
             'legacy': ('app', []),
         })
         self.assertIn('RESTORED', text)
-        self.assertIn('legacy', inventory.load(self.d / 'software.json'))
-        self.assertNotIn('archived_by', inventory.load(self.d / 'software.json')['legacy'])
+        legacy = inventory.load(self.d / 'software.json')['legacy']
+        self.assertNotIn('archived_by', legacy)
+        self.assertNotIn('source', legacy)
 
     def test_user_drop_stays_while_installed(self):
-        inventory.save(self.d / 'software.json', {'jq': entry(why='JSON', source='brew-formula')})
+        inventory.save(self.d / 'software.json', {'jq': entry(why='JSON')})
         inventory.save(self.d / 'dropped.json', {
             'noise': inventory.mark_user_drop(entry(why='dup', source='app')),
         })

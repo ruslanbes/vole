@@ -8,6 +8,19 @@ import sys
 from pathlib import Path
 
 from vole import __version__, inventory, paths, scan
+from vole.migrations import FORMAT, apply_pending
+
+
+def _ensure_migrated(data_dir):
+    """Apply pending inventory migrations; print each step to stderr."""
+    try:
+        applied = apply_pending(data_dir)
+    except (OSError, ValueError) as e:
+        print(f'error: {e}', file=sys.stderr)
+        sys.exit(1)
+    for step_id in applied:
+        print(f'migrated: {step_id} (format → {FORMAT})', file=sys.stderr)
+    return applied
 
 
 def _load(path, missing_ok=False):
@@ -46,7 +59,8 @@ def _near(name, *maps):
     keys = set()
     for m in maps:
         keys.update(m)
-    return [k for k in sorted(keys, key=str.lower) if name.lower() in k.lower()]
+    return [k for k in sorted(keys, key=inventory.name_sort_key)
+            if name.lower() in k.lower()]
 
 
 def _no_entry(cmd, name, where, near_in=(), note=None):
@@ -84,6 +98,7 @@ class _Inventory:
     """software.json + dropped.json, loaded together for one command."""
 
     def __init__(self, data_dir):
+        _ensure_migrated(data_dir)
         self.software = paths.software_path(data_dir)
         self.dropped = paths.dropped_path(data_dir)
         self.apps = _load(self.software, missing_ok=True)
@@ -126,10 +141,12 @@ def cmd_help(parser):
 
 
 def cmd_scan(args):
+    _ensure_migrated(args.data_dir)
     return scan.run(data_root=args.data_dir, months=args.months, write=not args.dry_run)
 
 
 def cmd_list(args):
+    _ensure_migrated(args.data_dir)
     software = paths.software_path(args.data_dir)
     vpath = paths.versions_path(args.data_dir)
     curated = _load(software, missing_ok=True)
@@ -141,7 +158,7 @@ def cmd_list(args):
 
     filt = (args.filter or '').lower()
     rows = []
-    for name in sorted(installed, key=str.lower):
+    for name in sorted(installed, key=inventory.name_sort_key):
         source, vers = installed[name]
         e = curated.get(name)
         status = e.get('status', '') if e else '-'
@@ -182,7 +199,9 @@ def cmd_list(args):
     return 0
 
 
-def cmd_edit(args):
+def _edit(args):
+    """Shared write path for why / keep / drop (not a user-facing command)."""
+    verb = getattr(args, 'verb', 'edit')
     inv = _Inventory(args.data_dir)
     if not inv.software.exists() and not inv.dropped.exists():
         print(f'error: no inventory at {inv.software}', file=sys.stderr)
@@ -190,17 +209,16 @@ def cmd_edit(args):
 
     fields = _collect_fields(args)
     if not fields:
-        print('edit: nothing to set — pass at least one of '
-              + ', '.join('--' + f for f in inventory.EDITABLE), file=sys.stderr)
+        print(f'{verb}: nothing to set', file=sys.stderr)
         return 2
 
     name = args.name
     where = inv.where(name)
     if where is None:
-        _no_entry('edit', name, inv.both_names(), (inv.apps, inv.archived))
+        _no_entry(verb, name, inv.both_names(), (inv.apps, inv.archived))
         return 1
     before = inv.get(name)
-    entry = _apply('edit', before, fields)
+    entry = _apply(verb, before, fields)
     if entry is None:
         return 2
     removed = [f for f, v in fields.items() if v == '' and f in before]
@@ -212,6 +230,8 @@ def cmd_edit(args):
 
     status = entry.get('status')
     if where == 'software' and status == 'dropped':
+        versions = _load(paths.versions_path(args.data_dir), missing_ok=True)
+        entry = inventory.attach_drop_source(entry, name, versions)
         inv.archive(name, entry)
         header = f'{name} → archived in {inv.dropped.name}'
     elif where == 'dropped' and status == 'active':
@@ -224,10 +244,62 @@ def cmd_edit(args):
     return 0
 
 
+def cmd_get(args):
+    """Dump one inventory entry (+ versions row if present). No scan, no writes."""
+    inv = _Inventory(args.data_dir)
+    if not inv.software.exists() and not inv.dropped.exists():
+        print(f'error: no inventory at {inv.software}', file=sys.stderr)
+        return 1
+    name = args.name
+    where = inv.where(name)
+    if where is None:
+        vpath = paths.versions_path(args.data_dir)
+        versions = _load(vpath, missing_ok=True)
+        note = None
+        if name in versions:
+            note = f'only in {vpath.name} — run `vole scan` or `vole add` to create an inventory entry'
+        _no_entry('get', name, inv.both_names(), (inv.apps, inv.archived, versions),
+                  note=note)
+        return 1
+    _print_entry(name, inv.get(name))
+    vrow = _load(paths.versions_path(args.data_dir), missing_ok=True).get(name)
+    if vrow is not None:
+        print('versions:')
+        for k in sorted(vrow):
+            print(f'    {k:<8} = {json.dumps(vrow[k], ensure_ascii=False)}')
+    return 0
+
+
+def cmd_why(args):
+    """Print or set why — read is text-only; write reuses edit confirmation."""
+    inv = _Inventory(args.data_dir)
+    if not inv.software.exists() and not inv.dropped.exists():
+        print(f'error: no inventory at {inv.software}', file=sys.stderr)
+        return 1
+    name = args.name
+    where = inv.where(name)
+    if where is None:
+        _no_entry('why', name, inv.both_names(), (inv.apps, inv.archived))
+        return 1
+    if args.reason is None:
+        print(inv.get(name).get('why', ''))
+        return 0
+    return _edit(argparse.Namespace(
+        data_dir=args.data_dir, name=name, verb='why',
+        why=args.reason, keep=None, status=None))
+
+
+def cmd_keep(args):
+    """Set keep — write only; reuses ``_edit`` confirmation."""
+    return _edit(argparse.Namespace(
+        data_dir=args.data_dir, name=args.name, verb='keep',
+        why=None, keep=args.reason, status=None))
+
+
 def cmd_drop(args):
-    """Archive an entry — same as ``edit NAME --status dropped``."""
-    return cmd_edit(argparse.Namespace(
-        data_dir=args.data_dir, name=args.name,
+    """Archive an entry (sticky user drop)."""
+    return _edit(argparse.Namespace(
+        data_dir=args.data_dir, name=args.name, verb='drop',
         status='dropped', why=None, keep=None))
 
 
@@ -264,8 +336,6 @@ def cmd_add(args):
     fields = _collect_fields(args, keys=('why', 'keep'))
     if name in inv.archived:
         changes = dict(fields, status='active')
-        if args.source is not None:
-            changes['source'] = args.source
         entry = _apply('add', inv.archived[name], changes)
         if entry is None:
             return 2
@@ -275,41 +345,49 @@ def cmd_add(args):
                      header=f'{name} → restored to {inv.software.name} (add)')
         return 0
 
-    if not args.source:
-        print('add: --source is required when creating a new entry', file=sys.stderr)
-        return 2
-    entry = _apply('add', inventory.stub(args.source, datetime.date.today().isoformat()), fields)
+    entry = _apply('add', inventory.stub(datetime.date.today().isoformat()), fields)
     if entry is None:
         return 2
     inv.put(name, entry)
-    _print_entry(name, entry, changed={'source', 'why', 'added', 'status', *fields},
+    _print_entry(name, entry, changed={'why', 'added', 'status', *fields},
                  header=f'{name} → added to {inv.software.name}')
     return 0
 
 
-def cmd_delete(args):
+def cmd_purge(args):
     inv = _Inventory(args.data_dir)
     vpath = paths.versions_path(args.data_dir)
     versions = _load(vpath, missing_ok=True)
     name = args.name
     where = inv.where(name)
     if where is None:
-        _no_entry('delete', name, inv.both_names())
+        _no_entry('purge', name, inv.both_names())
         return 1
     store, path = (inv.apps, inv.software) if where == 'software' else (inv.archived, inv.dropped)
 
-    print(f'This will permanently delete {name!r} from {path.name}'
+    print(f'This will permanently purge {name!r} from {path.name}'
           + (f' and {vpath.name}' if name in versions else '') + '.')
-    if not _confirm('delete', args.force):
+    if not _confirm('purge', args.force):
         return 1
 
     del store[name]
     inventory.save(path, store)
-    print(f'deleted {name!r} from {path.name}')
+    print(f'purged {name!r} from {path.name}')
     if name in versions:
         del versions[name]
         inventory.save(vpath, versions)
-        print(f'deleted {name!r} from {vpath.name}')
+        print(f'purged {name!r} from {vpath.name}')
+    return 0
+
+
+def cmd_migrate(args):
+    """Apply pending inventory migrations (same runner as auto-on-load)."""
+    before = FORMAT
+    applied = _ensure_migrated(args.data_dir)
+    if not applied:
+        print(f'already at format {before}')
+        return 0
+    print(f'now at format {FORMAT} ({len(applied)} step(s))')
     return 0
 
 
@@ -353,27 +431,28 @@ def build_parser():
     lst.add_argument('filter', nargs='?', default='', help='substring filter')
     lst.set_defaults(func=cmd_list)
 
-    edit = sub.add_parser(
-        'edit',
-        help='set fields on one entry in software.json or dropped.json '
-             '(--status dropped archives; --status active restores)')
-    edit.add_argument('name')
-    for f in inventory.EDITABLE:
-        if f == 'status':
-            edit.add_argument('--status', default=None, choices=sorted(inventory.STATUSES))
-        else:
-            edit.add_argument('--' + f, default=None, help='empty string removes the field')
-    edit.set_defaults(func=cmd_edit)
+    get = sub.add_parser('get', help='show all stored fields for one entry (no scan)')
+    get.add_argument('name')
+    get.set_defaults(func=cmd_get)
+
+    why = sub.add_parser('why', help='print or set the why for one entry (software or dropped)')
+    why.add_argument('name')
+    why.add_argument('reason', nargs='?', default=None,
+                     help='if given, set why (empty string clears)')
+    why.set_defaults(func=cmd_why)
+
+    keep = sub.add_parser('keep', help='set keep for one entry (software or dropped; write only)')
+    keep.add_argument('name')
+    keep.add_argument('reason', help='keep reason (empty string clears)')
+    keep.set_defaults(func=cmd_keep)
 
     add = sub.add_parser('add', help='create an entry, or restore from dropped.json and set fields')
     add.add_argument('name')
-    add.add_argument('--source', default=None,
-                     help='required when creating a new entry')
     add.add_argument('--why', default=None)
     add.add_argument('--keep', default=None)
     add.set_defaults(func=cmd_add)
 
-    drop = sub.add_parser('drop', help='archive an entry (alias for edit --status dropped)')
+    drop = sub.add_parser('drop', help='archive an entry (sticky while still installed)')
     drop.add_argument('name')
     drop.set_defaults(func=cmd_drop)
 
@@ -383,10 +462,13 @@ def build_parser():
     restore.add_argument('--keep', default=None)
     restore.set_defaults(func=cmd_restore)
 
-    delete = sub.add_parser('delete', help='permanently remove an entry from software or dropped')
-    delete.add_argument('name')
-    delete.add_argument('--force', action='store_true', help='skip the confirmation prompt')
-    delete.set_defaults(func=cmd_delete)
+    purge = sub.add_parser('purge', help='permanently remove an entry from software or dropped')
+    purge.add_argument('name')
+    purge.add_argument('--force', action='store_true', help='skip the confirmation prompt')
+    purge.set_defaults(func=cmd_purge)
+
+    migrate = sub.add_parser('migrate', help='apply pending inventory format migrations')
+    migrate.set_defaults(func=cmd_migrate)
 
     reset = sub.add_parser('reset', help='delete all inventory data (software, dropped, versions)')
     reset.add_argument('--force', action='store_true',

@@ -1,10 +1,12 @@
 """Read and write the JSON inventory. Stdlib only, Python 3.9+."""
 import json
 import os
+import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-FORMAT = 1
+from vole.migrations import FORMAT
+
 FILE_MODE = 0o600
 DIR_MODE = 0o700
 EDITABLE = ('why', 'keep', 'status')
@@ -13,17 +15,26 @@ STATUSES = frozenset({'active', 'dropped'})
 ARCHIVED_BY_USER = 'user'
 ARCHIVED_BY_SCAN = 'scan'
 ARCHIVED_BY = frozenset({ARCHIVED_BY_USER, ARCHIVED_BY_SCAN})
-# software / dropped entries — keep is free-form; archived_by is additive
-ENTRY_FIELDS = frozenset({'source', 'why', 'added', 'status', 'keep', 'archived_by'})
+# software / dropped entries — keep is free-form; archived_by / last_used are additive.
+# ``source`` is allowed on *dropped* rows (copied from versions at archive time), not on active.
+ENTRY_FIELDS = frozenset({
+    'source', 'why', 'added', 'status', 'keep', 'archived_by', 'last_used',
+})
 VERSION_FIELDS = frozenset({'source', 'versions'})
 
 
-def render(apps):
+def name_sort_key(name: str):
+    """Case-insensitive name order (phone-book); tie-break on original spelling."""
+    return (name.lower(), name)
+
+
+def render(apps, format: Optional[int] = None):
     """Serialise deterministically: entries sorted by name case-insensitively,
     fields sorted, two-space indent. Same data always gives the same bytes."""
+    fmt = FORMAT if format is None else format
     ordered = {name: {k: apps[name][k] for k in sorted(apps[name])}
-               for name in sorted(apps, key=lambda n: (n.lower(), n))}
-    return json.dumps({'format': FORMAT, 'apps': ordered}, indent=2, ensure_ascii=False) + '\n'
+               for name in sorted(apps, key=name_sort_key)}
+    return json.dumps({'format': fmt, 'apps': ordered}, indent=2, ensure_ascii=False) + '\n'
 
 def parse(text, label='inventory'):
     try:
@@ -43,14 +54,14 @@ def load(path, missing_ok=False):
     with open(path, encoding='utf-8') as f:
         return parse(f.read(), path.name)
 
-def save(path, apps):
+def save(path, apps, format: Optional[int] = None):
     """The only writer. Temp file + os.replace so an interrupted run cannot truncate.
 
     Leaves the file untouched (same mtime) when the rendered text is already on disk.
     Files are owner-only (0600): they hold personal notes.
     """
     path = Path(path)
-    text = render(apps)
+    text = render(apps, format=format)
     try:
         if path.read_text(encoding='utf-8') == text:
             if path.stat().st_mode & 0o077:
@@ -96,15 +107,31 @@ def set_field(entry, key, value):
         out[key] = value
     return out
 
-def stub(source, today):
-    return {'source': source, 'why': 'TODO', 'added': today, 'status': 'active'}
+def stub(today):
+    """New active software row — no source (live source lives on versions.json)."""
+    return {'why': 'TODO', 'added': today, 'status': 'active'}
+
+
+def attach_drop_source(entry: Dict, name: str, versions: Dict, *, warn: bool = True) -> Dict:
+    """Copy ``source`` from versions onto a drop/archive entry; omit if missing."""
+    out = dict(entry)
+    row = versions.get(name) if versions else None
+    src = (row or {}).get('source') if isinstance(row, dict) else None
+    if src:
+        out['source'] = src
+    else:
+        out.pop('source', None)
+        if warn:
+            print(f'warning: no versions source for {name!r} — archived without source',
+                  file=sys.stderr)
+    return out
 
 
 def check_apps(apps: Dict, label: str, *, versions_file: bool = False) -> List[str]:
     """Return human-readable shape problems for a loaded apps map. Empty = ok."""
     problems: List[str] = []
     allowed = VERSION_FIELDS if versions_file else ENTRY_FIELDS
-    for name in sorted(apps, key=lambda n: (n.lower(), n)):
+    for name in sorted(apps, key=name_sort_key):
         entry = apps[name]
         where = f'{label}: {name!r}'
         if not isinstance(entry, dict):
@@ -129,7 +156,7 @@ def check_apps(apps: Dict, label: str, *, versions_file: bool = False) -> List[s
                 problems.append(
                     f'{where}: source must be a string, got {type(entry["source"]).__name__}')
             continue
-        for key in ('source', 'why', 'added', 'keep'):
+        for key in ('source', 'why', 'added', 'keep', 'last_used'):
             if key in entry and not isinstance(entry[key], str):
                 problems.append(
                     f'{where}: {key} must be a string, got {type(entry[key]).__name__}')
@@ -141,6 +168,11 @@ def check_apps(apps: Dict, label: str, *, versions_file: bool = False) -> List[s
             elif st not in STATUSES:
                 problems.append(
                     f'{where}: unknown status {st!r} (expected active or dropped)')
+        status = entry.get('status', 'active')
+        if status != 'dropped' and 'source' in entry:
+            problems.append(
+                f'{where}: source on active software is obsolete '
+                f'(use versions.json; copied onto dropped at archive time)')
         if 'archived_by' in entry:
             ab = entry['archived_by']
             if not isinstance(ab, str):
@@ -174,8 +206,9 @@ def mark_scan_drop(entry: Dict) -> Dict:
 
 
 def clear_archive_meta(entry: Dict) -> Dict:
-    """Copy entry restored to active software (no archived_by)."""
+    """Copy entry restored to active software (no archived_by / source)."""
     out = dict(entry)
     out['status'] = 'active'
     out.pop('archived_by', None)
+    out.pop('source', None)
     return out

@@ -91,6 +91,67 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - done_when: See `dev/tasks/scan-auto-archive.md`.
 - notes: Shipped — `archived_by` user\|scan; missing non-sticky; write scan moves; dry-run suggests.
 
+## persist-last-used
+- status: done
+- goal: Persist per-entry last-used dates across scans; only advance when a newer dated signal is seen.
+- done_when: See `dev/tasks/persist-last-used.md`.
+- notes: Shipped — additive `last_used`; max(stored,live); bash/untimestamped bounded guess (N=400); DROP `no signal since <last_used>`.
+
+## cli-why
+- status: done
+- goal: `vole why NAME` shows why; `vole why NAME "Reason"` sets it.
+- done_when: See `dev/tasks/cli-why.md`.
+- notes: Shipped — resolve like edit; read why-only; write reuses edit dump; missing refuses; `""` clears.
+
+## cli-get
+- status: done
+- goal: `vole get NAME` dumps one inventory entry (all stored fields; no scan).
+- done_when: See `dev/tasks/cli-get.md`.
+- notes: Shipped — `_print_entry` + versions section; versions-only refused; no scan.
+
+## cli-keep
+- status: done
+- goal: `vole keep NAME "…"` sets keep (write only; short path for edit --keep).
+- done_when: See `dev/tasks/cli-keep.md`.
+- notes: Shipped — write-only; resolve like edit; `""` clears; bare name = usage error.
+
+## case-insensitive-sort
+- status: done
+- goal: Human-facing list/scan name order is case-insensitive (match inventory on-disk sort).
+- done_when: See `dev/tasks/case-insensitive-sort.md`.
+- notes: Shipped — `inventory.name_sort_key` shared by render, list, classify, versions.diff.
+
+## remove-user-facing-edit
+- status: done
+- goal: Drop public `vole edit`; keep shared write path for why/keep/drop.
+- done_when: No `edit` subcommand; README/tests use why/keep/drop/restore; `_edit` remains internal.
+- notes: Shipped — `_edit` + verb label; status only via drop/restore.
+
+## rename-delete-to-purge
+- status: done
+- goal: Rename user-facing `delete` to `purge` (and in code) so it is not confused with `drop`.
+- done_when: `vole purge`; no `delete` subcommand; README/tests/CHANGELOG updated.
+- notes: Shipped — `cmd_purge`; `drop` stays (DROP CANDIDATES).
+
+## cli-uninstall
+- status: backlog
+- goal: Source-specific `vole uninstall` (machine remove); huge; not current version.
+- done_when: See `dev/tasks/cli-uninstall.md`.
+- notes: OQs open — may later rename `drop`→`uninstall`; keep DROP CANDIDATES language until then.
+
+## inventory-migrations
+- status: done
+- goal: Ship a named, ordered inventory migration framework (format bumps on every migration).
+- done_when: See `dev/tasks/inventory-migrations.md`.
+- notes: Shipped — runner + auto-on-load + `vole migrate`; first production step is m002.
+
+## drop-source-from-software
+- status: done
+- blocked_by: inventory-migrations
+- goal: Stop storing `source` on active software; copy from versions at drop/archive time only.
+- done_when: See `dev/tasks/drop-source-from-software.md`.
+- notes: Shipped — format 1→2 (`m002_strip_software_source`); stubs/`add` omit source; drop/scan-archive copy from versions.
+
 ## source-sdkman
 - status: backlog
 - goal: Discover SDKMAN!-managed SDKs (Java, Groovy, Kotlin, …) under `~/.sdkman/candidates`.

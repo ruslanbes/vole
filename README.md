@@ -12,8 +12,8 @@ MISSING A REASON (3):
   parsec
 
 DROP CANDIDATES (2):
-  ratatui                      0.22.2     cargo          no signal since 2025-11-02 (shell 2025-11-02)
-  Sketch                       100.3      app            no usage signal at all — needs a manual look
+  ratatui                      0.22.2     cargo          no usage since 2025-11-02
+  Sketch                       100.3      app            no usage at all
 
 VERSIONS (1 changed since last scan):
   jq                                 1.7.1  ->  1.8.1
@@ -70,29 +70,37 @@ vole --version               # print version
 vole scan                    # scan and save; creates ~/.config/vole/ on first run
 vole scan --dry-run          # report only, never writes
 vole list [filter]           # table of installed software: version + why
-vole edit NAME --why "…"     # set why / keep / status (software or dropped)
-vole drop NAME               # archive (alias for edit --status dropped)
-vole add NAME --source …     # create, or restore from dropped and set fields
+vole get NAME                # all stored fields for one entry (no scan)
+vole migrate                 # apply pending inventory format migrations (also auto on load)
+vole why NAME                # print why (text only)
+vole why NAME "…"            # set why
+vole keep NAME "…"           # set keep (write only)
+vole drop NAME               # archive (sticky while still installed)
+vole add NAME                # create, or restore from dropped and set fields
 vole restore NAME            # move from dropped.json back to software.json
-vole delete NAME             # permanently remove (asks first; --force to skip)
+vole purge NAME              # permanently remove (asks first; --force to skip)
 vole reset                   # delete all inventory data (asks first; --force to skip)
 ```
 
 `vole scan` archives entries that are no longer installed (reason kept in `dropped.json`).
 If that software comes back, scan restores it — unless you dropped it yourself with
-`vole drop` (or `edit --status dropped`), which stays sticky while installed. Use
-`vole restore NAME` to undo a sticky drop or a bad auto-archive. `edit` works on
-archived rows too.
+`vole drop`, which stays sticky while installed. Use `vole restore NAME` to undo a sticky
+drop or a bad auto-archive. `why` / `keep` work on archived rows too. Scan also stores a
+`last_used` date per entry (advanced only when a newer usage signal is seen) so DROP
+CANDIDATES survive shell-history rotation.
 
 Examples:
 
 ```sh
-vole edit jq --why "JSON in shell scripts"
-vole edit imagemagick --keep dependency --why "thumbnails for the blog"
+vole get jq
+vole why jq
+vole why jq "JSON in shell scripts"
+vole keep imagemagick dependency
+vole why imagemagick "thumbnails for the blog"
 vole drop old-tool
 vole restore old-tool
-vole add manual-bin --source local-bin --why "helper script"
-vole delete obsolete-thing --force
+vole add manual-bin --why "helper script"
+vole purge obsolete-thing --force
 vole list brew
 ```
 
@@ -141,12 +149,13 @@ Tracks software installed from:
 
 ## Keeping
 
-Use `--keep` to mark an entry so that vole stops mentioning it as unused. Possible reasons:
+Use `vole keep NAME "…"` to mark an entry so that vole stops mentioning it as unused.
+Possible reasons:
 
 * `mdm`: The software is controlled by the Mobile Device Management - usually on your corporate laptop. Even if you don't use it, you can't uninstall it on your own, so no reason to get signals about it.
 * `dependency`: Something else needs it. Typical for things like `imagemagick`
 * `in-use`: Vole could not find usage signals but you know you use it.
-* Anything else — `--keep` is a free-form reason; these are just examples. 
+* Anything else — keep is a free-form reason; these are just examples.
 
 ## Known rough edges
 

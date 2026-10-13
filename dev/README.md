@@ -30,8 +30,8 @@ Package layout: `vole/` with `sources/` (discovery) and `signals/` (usage facts)
 - **The data files are the product.** `~/.config/vole/software.json` / `dropped.json` hold
   hand-written reasoning. Anything that writes them goes through `inventory.save`
   (deterministic, atomic): rewriting unchanged data must be byte-identical. Schema changes
-  follow [ADR-008](../docs/adr/adr-008-inventory-format-versioning.md): additive fields keep
-  the format version; renames, removals and type changes bump it and ship a migration.
+  follow [ADR-008](../docs/adr/adr-008-inventory-format-versioning.md): optional fields that
+  need no rewrite do not bump; any registered migration bumps `format` by 1.
 - **Python-only CLI** — no shell enumerator.
   New install routes go under `vole/sources/`; new usage signals under `vole/signals/`.
 - **Zero third-party dependencies.** Stdlib only; Python floor 3.9+.

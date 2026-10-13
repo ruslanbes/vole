@@ -34,9 +34,10 @@ Warnings only — scan continues. Works on Python 3.9, stdlib only.
 
 | Field | Rule |
 |-------|------|
-| `source`, `why`, `added` | string when present |
+| `why`, `added`, `keep`, `last_used` | string when present |
+| `source` | string when present; **only on dropped** (active → warning) |
 | `status` | string; if present must be `active` or `dropped` |
-| `keep` | string when present (any value) |
+| `archived_by` | `user` or `scan` when present |
 | anything else | unknown field → warning |
 
 Entry itself must be an object.

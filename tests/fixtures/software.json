@@ -1,21 +1,18 @@
 {
-  "format": 1,
+  "format": 2,
   "apps": {
     "alfred": {
       "added": "2026-09-13",
-      "source": "brew-cask",
       "status": "active",
       "why": "GUI App finder"
     },
     "azure/kubelogin/kubelogin": {
       "added": "2026-09-13",
-      "source": "brew-formula",
       "status": "active",
       "why": "kubectl auth"
     },
     "jq": {
       "added": "2026-09-13",
-      "source": "brew-formula",
       "status": "active",
       "why": "TODO"
     },
@@ -28,7 +25,6 @@
     "qwen3.8:27b-mlx": {
       "added": "2026-09-16",
       "keep": "in-use",
-      "source": "ollama",
       "status": "active",
       "why": "model"
     }
