@@ -398,7 +398,7 @@ class TestPipxSource(unittest.TestCase):
                         'package': 'httpie',
                         'package_version': '3.2.2',
                         'apps': ['http', 'https', 'httpie'],
-                        'apps_of_dependencies': {},
+                        'apps_of_dependencies': [],
                     }
                 }
             },
@@ -408,7 +408,8 @@ class TestPipxSource(unittest.TestCase):
                         'package': 'ruff',
                         'package_version': '0.6.0',
                         'apps': ['ruff'],
-                        'apps_of_dependencies': {'something': ['dep-bin']},
+                        # Real pipx metadata: flat list of dependency app names.
+                        'apps_of_dependencies': ['dep-bin'],
                     }
                 }
             },
@@ -422,6 +423,26 @@ class TestPipxSource(unittest.TestCase):
             Installed('pipx', 'ruff', ['0.6.0']),
         ])
         self.assertEqual(shims, {'http', 'https', 'httpie', 'ruff', 'dep-bin'})
+
+    def test_apps_of_dependencies_list_does_not_raise(self):
+        """Non-empty list must not call .values() (colleague crash on real pipx)."""
+        data = {
+            'venvs': {
+                'pkg': {
+                    'metadata': {
+                        'main_package': {
+                            'package': 'pkg',
+                            'package_version': '1.0',
+                            'apps': ['pkg'],
+                            'apps_of_dependencies': ['dep-a', 'dep-b'],
+                        }
+                    }
+                }
+            }
+        }
+        items, shims = pipx.parse_list_json(data)
+        self.assertEqual(items, [Installed('pipx', 'pkg', ['1.0'])])
+        self.assertEqual(shims, {'pkg', 'dep-a', 'dep-b'})
 
     def test_missing_pipx_is_empty(self):
         with tempfile.TemporaryDirectory() as d:

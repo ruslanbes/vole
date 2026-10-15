@@ -4,6 +4,12 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-15
+
+### Fixed
+
+- `scan` fixed for pipx source.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

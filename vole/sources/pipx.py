@@ -22,10 +22,9 @@ def parse_list_json(data: Dict[str, Any]) -> Tuple[List[Installed], Set[str]]:
         for app in main.get('apps') or []:
             if app:
                 shims.add(app)
-        for dep_apps in (main.get('apps_of_dependencies') or {}).values():
-            for app in dep_apps or []:
-                if app:
-                    shims.add(app)
+        for app in main.get('apps_of_dependencies') or []:
+            if app:
+                shims.add(app)
     return installed, shims
 
 
