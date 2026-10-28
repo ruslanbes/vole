@@ -72,6 +72,23 @@ def _no_entry(cmd, name, where, near_in=(), note=None):
         print('      did you mean: ' + ', '.join(near[:6]), file=sys.stderr)
 
 
+def _ambiguous(cmd, query, matches):
+    print(f'{cmd}: no entry named {query!r}', file=sys.stderr)
+    print('      did you mean: ' + ', '.join(matches[:6]), file=sys.stderr)
+
+
+def _resolve_or_fail(cmd, query, where, *maps):
+    """Return canonical name, or None after printing why not (exit-style fail)."""
+    name, ambiguous = inventory.resolve_name(query, *maps)
+    if name is not None:
+        return name
+    if ambiguous:
+        _ambiguous(cmd, query, ambiguous)
+        return None
+    _no_entry(cmd, query, where, maps)
+    return None
+
+
 def _apply(cmd, entry, fields):
     """entry with fields set, or None after printing why not."""
     try:
@@ -212,11 +229,10 @@ def _edit(args):
         print(f'{verb}: nothing to set', file=sys.stderr)
         return 2
 
-    name = args.name
-    where = inv.where(name)
-    if where is None:
-        _no_entry(verb, name, inv.both_names(), (inv.apps, inv.archived))
+    name = _resolve_or_fail(verb, args.name, inv.both_names(), inv.apps, inv.archived)
+    if name is None:
         return 1
+    where = inv.where(name)
     before = inv.get(name)
     entry = _apply(verb, before, fields)
     if entry is None:
@@ -250,16 +266,23 @@ def cmd_get(args):
     if not inv.software.exists() and not inv.dropped.exists():
         print(f'error: no inventory at {inv.software}', file=sys.stderr)
         return 1
-    name = args.name
-    where = inv.where(name)
-    if where is None:
+    name, ambiguous = inventory.resolve_name(args.name, inv.apps, inv.archived)
+    if ambiguous:
+        _ambiguous('get', args.name, ambiguous)
+        return 1
+    if name is None:
         vpath = paths.versions_path(args.data_dir)
         versions = _load(vpath, missing_ok=True)
+        vname, vamb = inventory.resolve_name(args.name, versions)
+        if vamb:
+            _ambiguous('get', args.name, vamb)
+            return 1
         note = None
-        if name in versions:
-            note = f'only in {vpath.name} — run `vole scan` or `vole add` to create an inventory entry'
-        _no_entry('get', name, inv.both_names(), (inv.apps, inv.archived, versions),
-                  note=note)
+        if vname is not None:
+            note = (f'only in {vpath.name} — run `vole scan` or `vole add` '
+                    f'to create an inventory entry')
+        _no_entry('get', args.name, inv.both_names(),
+                  (inv.apps, inv.archived, versions), note=note)
         return 1
     _print_entry(name, inv.get(name))
     vrow = _load(paths.versions_path(args.data_dir), missing_ok=True).get(name)
@@ -276,10 +299,8 @@ def cmd_why(args):
     if not inv.software.exists() and not inv.dropped.exists():
         print(f'error: no inventory at {inv.software}', file=sys.stderr)
         return 1
-    name = args.name
-    where = inv.where(name)
-    if where is None:
-        _no_entry('why', name, inv.both_names(), (inv.apps, inv.archived))
+    name = _resolve_or_fail('why', args.name, inv.both_names(), inv.apps, inv.archived)
+    if name is None:
         return 1
     if args.reason is None:
         print(inv.get(name).get('why', ''))
@@ -305,10 +326,14 @@ def cmd_drop(args):
 
 def cmd_restore(args):
     inv = _Inventory(args.data_dir)
-    name = args.name
-    if name not in inv.archived:
-        note = f'already in {inv.software.name}' if name in inv.apps else None
-        _no_entry('restore', name, inv.dropped.name, (inv.archived,), note=note)
+    name, ambiguous = inventory.resolve_name(args.name, inv.archived)
+    if ambiguous:
+        _ambiguous('restore', args.name, ambiguous)
+        return 1
+    if name is None:
+        soft, _ = inventory.resolve_name(args.name, inv.apps)
+        note = f'already in {inv.software.name}' if soft is not None else None
+        _no_entry('restore', args.name, inv.dropped.name, (inv.archived,), note=note)
         return 1
     if name in inv.apps:
         print(f'restore: {name!r} is already in {inv.software.name}', file=sys.stderr)
@@ -358,11 +383,10 @@ def cmd_purge(args):
     inv = _Inventory(args.data_dir)
     vpath = paths.versions_path(args.data_dir)
     versions = _load(vpath, missing_ok=True)
-    name = args.name
-    where = inv.where(name)
-    if where is None:
-        _no_entry('purge', name, inv.both_names())
+    name = _resolve_or_fail('purge', args.name, inv.both_names(), inv.apps, inv.archived)
+    if name is None:
         return 1
+    where = inv.where(name)
     store, path = (inv.apps, inv.software) if where == 'software' else (inv.archived, inv.dropped)
 
     print(f'This will permanently purge {name!r} from {path.name}'

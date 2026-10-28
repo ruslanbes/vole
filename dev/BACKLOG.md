@@ -139,6 +139,36 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - done_when: See `dev/tasks/cli-uninstall.md`.
 - notes: OQs open — may later rename `drop`→`uninstall`; keep DROP CANDIDATES language until then.
 
+## cli-autoscan
+- status: backlog
+- goal: `vole autoscan` on/off/schedule + status (next run); free-form schedules from CLI.
+- done_when: See `dev/tasks/cli-autoscan.md`.
+- notes: OQs open — launchd proposed; weekly/monthly/every N …; bare autoscan = status.
+
+## name-case-insensitive
+- status: done
+- goal: Exact then unique CI name match; several CI hits → did you mean.
+- done_when: See `dev/tasks/name-case-insensitive.md`.
+- notes: Shipped — any query casing; `Go`→`go`; ambiguous uses did-you-mean.
+
+## name-fuzzy-match
+- status: backlog
+- goal: Auto-resolve unique ≤2-edit name typos; announce assumption.
+- done_when: See `dev/tasks/name-fuzzy-match.md`.
+- notes: OQs open — after exact/CI; short-name guard; stdlib Levenshtein.
+
+## name-glob
+- status: backlog
+- goal: `*` / `?` multi-name selection for batch why/keep (quoted patterns).
+- done_when: See `dev/tasks/name-glob.md`.
+- notes: OQs open — Google* families; shell must quote; gate drop/purge.
+
+## name-shell-completion
+- status: backlog
+- goal: Shell Tab completion for subcommands + inventory names (zsh first).
+- done_when: See `dev/tasks/name-shell-completion.md`.
+- notes: OQs open — best interactive UX; brew/curl install hooks TBD.
+
 ## inventory-migrations
 - status: done
 - goal: Ship a named, ordered inventory migration framework (format bumps on every migration).
@@ -151,6 +181,12 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - goal: Stop storing `source` on active software; copy from versions at drop/archive time only.
 - done_when: See `dev/tasks/drop-source-from-software.md`.
 - notes: Shipped — format 1→2 (`m002_strip_software_source`); stubs/`add` omit source; drop/scan-archive copy from versions.
+
+## detect-rosetta-apps
+- status: backlog
+- goal: On Apple Silicon, scan flags Intel-only (.app) installs that need Rosetta.
+- done_when: See `dev/tasks/detect-rosetta-apps.md`.
+- notes: OQs open — Spotlight/lipo; report section; .app only; live-only; arm64 host gate.
 
 ## source-sdkman
 - status: backlog

@@ -4,6 +4,10 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Added
+
+- Case-insensitive apps search.
+
 ## [0.2.1] - 2026-10-15
 
 ### Fixed

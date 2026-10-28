@@ -130,6 +130,38 @@ class TestSetField(unittest.TestCase):
         self.assertNotIn('keep', out)
 
 
+class TestResolveName(unittest.TestCase):
+    NAMES = {'Google Chrome': {}, 'iTerm': {}, 'jq': {}}
+
+    def test_exact_wins(self):
+        self.assertEqual(inventory.resolve_name('jq', self.NAMES), ('jq', None))
+        self.assertEqual(inventory.resolve_name('Google Chrome', self.NAMES),
+                         ('Google Chrome', None))
+
+    def test_unique_ci(self):
+        self.assertEqual(inventory.resolve_name('google chrome', self.NAMES),
+                         ('Google Chrome', None))
+        self.assertEqual(inventory.resolve_name('iterm', self.NAMES), ('iTerm', None))
+        self.assertEqual(inventory.resolve_name('GoOgLe ChRoMe', self.NAMES),
+                         ('Google Chrome', None))
+
+    def test_ci_no_hit_is_missing(self):
+        self.assertEqual(inventory.resolve_name('nosuch', self.NAMES), (None, None))
+
+    def test_ambiguous_ci(self):
+        names = {'iTerm': {}, 'ITerm': {}}
+        name, hits = inventory.resolve_name('iterm', names)
+        self.assertIsNone(name)
+        self.assertEqual(set(hits), {'iTerm', 'ITerm'})
+
+    def test_maps_merged_for_ambiguity(self):
+        soft = {'Alpha': {}}
+        drop = {'ALPHA': {}}
+        name, hits = inventory.resolve_name('alpha', soft, drop)
+        self.assertIsNone(name)
+        self.assertEqual(hits, ['Alpha', 'ALPHA'])
+
+
 class TestCheckApps(unittest.TestCase):
     def test_fixtures_are_clean(self):
         for name, versions_file in (('software.json', False), ('versions.json', True)):
@@ -883,6 +915,46 @@ class TestCLI(unittest.TestCase):
         r = self.vole('why', 'kubelogin')
         self.assertEqual(r.returncode, 1)
         self.assertIn('no entry named', r.stderr)
+
+    def test_why_ci_resolves_title_case(self):
+        apps = self.parsed()
+        apps['Google Chrome'] = {
+            'why': 'browser', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('why', 'google chrome')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, 'browser\n')
+        r = self.vole('why', 'GOOGLE CHROME', 'web')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.parsed()['Google Chrome']['why'], 'web')
+
+    def test_why_ci_resolves_go_capital_g(self):
+        apps = self.parsed()
+        apps['go'] = {'why': 'lang', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('why', 'Go')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, 'lang\n')
+
+    def test_why_ambiguous_ci_did_you_mean(self):
+        apps = self.parsed()
+        apps['iTerm'] = {'why': 'a', 'added': '2026-01-01', 'status': 'active'}
+        apps['ITerm'] = {'why': 'b', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('why', 'iterm')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('did you mean', r.stderr)
+        self.assertIn('iTerm', r.stderr)
+
+    def test_add_does_not_ci_resolve(self):
+        apps = self.parsed()
+        apps['Google Chrome'] = {
+            'why': 'browser', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('add', 'google chrome', '--why', 'dup')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('google chrome', self.parsed())
+        self.assertIn('Google Chrome', self.parsed())
 
     def test_why_reads_dropped(self):
         self.assertEqual(self.vole('drop', 'alfred').returncode, 0)

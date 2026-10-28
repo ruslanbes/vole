@@ -28,6 +28,36 @@ def name_sort_key(name: str):
     return (name.lower(), name)
 
 
+def resolve_name(query: str, *maps):
+    """Resolve an inventory name for CLI verbs (not ``add`` / ``list``).
+
+    1. Exact (case-sensitive) hit → that key.
+    2. Else case-insensitive (``query.lower() == name.lower()``): unique hit → that key;
+       several hits → ambiguous.
+
+    Returns ``(canonical, None)`` on success, ``(None, [hits…])`` when ambiguous,
+    ``(None, None)`` when missing.
+    """
+    ordered: List[str] = []
+    seen = set()
+    for m in maps:
+        if not m:
+            continue
+        for key in m:
+            if key not in seen:
+                seen.add(key)
+                ordered.append(key)
+    if query in seen:
+        return query, None
+    folded = query.lower()
+    hits = [key for key in ordered if key.lower() == folded]
+    if len(hits) == 1:
+        return hits[0], None
+    if len(hits) > 1:
+        return None, hits
+    return None, None
+
+
 def render(apps, format: Optional[int] = None):
     """Serialise deterministically: entries sorted by name case-insensitively,
     fields sorted, two-space indent. Same data always gives the same bytes."""
