@@ -14,7 +14,8 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pin: ubuntu-latest is 26.04, which has no setup-python 3.9 (project floor).
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
