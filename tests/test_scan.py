@@ -130,6 +130,39 @@ class TestSetField(unittest.TestCase):
         self.assertNotIn('keep', out)
 
 
+class TestCompleteNames(unittest.TestCase):
+    def test_prefix_and_one_edit(self):
+        from vole.complete import completion_names, edit_distance
+        names = ['Google Chrome', 'go', 'jq', 'Foxit PDF Reader']
+        self.assertEqual(completion_names('google', names), ['Google Chrome'])
+        # CI prefix: "go" matches both "go" and "Google Chrome"
+        self.assertEqual(completion_names('Go', names), ['go', 'Google Chrome'])
+        # 1-edit on whole lowercased name: "foxi" → "foxit pdf reader" is not distance 1;
+        # match a short inventory name instead.
+        names2 = ['Foxit', 'jq']
+        self.assertEqual(edit_distance('foxi', 'foxit'), 1)
+        self.assertEqual(completion_names('Foxi', names2), ['Foxit'])
+        # short query: prefix only (no edit-distance flood)
+        self.assertEqual(completion_names('g', names), ['go', 'Google Chrome'])
+
+    def test_cli_complete_names(self):
+        d = Path(tempfile.mkdtemp())
+        try:
+            inventory.save(d / 'software.json', {
+                'Google Chrome': {'why': 'x', 'added': '2026-01-01', 'status': 'active'},
+                'jq': {'why': 'y', 'added': '2026-01-01', 'status': 'active'},
+            })
+            r = run_vole('complete', 'names', 'google', data_dir=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), 'Google Chrome')
+            r = run_vole('complete', 'names', data_dir=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = r.stdout.strip().splitlines()
+            self.assertEqual(lines, ['Google Chrome', 'jq'])
+        finally:
+            shutil.rmtree(d)
+
+
 class TestResolveName(unittest.TestCase):
     NAMES = {'Google Chrome': {}, 'iTerm': {}, 'jq': {}}
 

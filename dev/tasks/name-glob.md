@@ -1,7 +1,7 @@
 # Glob-like multi-name selection (`*` / `?`)
 
 - **Task ID:** `name-glob`
-- **Status:** backlog
+- **Status:** backlog (deferred)
 - **Related:** `name-case-insensitive`, `name-fuzzy-match`, `name-shell-completion`
 
 ## Problem

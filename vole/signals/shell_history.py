@@ -2,7 +2,7 @@
 
 zsh EXTENDED_HISTORY and fish carry timestamps. Untimestamped lines (bash, or zsh
 without EXTENDED_HISTORY) use a bounded guess: name in the newest N lines → history
-file mtime (capped at today). See dev/tasks/persist-last-used.md.
+file mtime (capped at today).
 """
 import datetime
 import os

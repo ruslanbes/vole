@@ -47,6 +47,9 @@ class TestInstall(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(v.returncode, 0, v.stderr)
         self.assertEqual(v.stdout.strip(), f'vole {__version__}')
+        zsh_comp = self.home / '.zsh' / 'completions' / '_vole'
+        self.assertTrue(zsh_comp.is_file(), r.stdout)
+        self.assertIn('#compdef vole', zsh_comp.read_text())
 
     def test_rerun_restores_package_and_keeps_other_files(self):
         self.assertEqual(self.install().returncode, 0)

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from vole import __version__, inventory, paths, scan
+from vole.complete import completion_names
 from vole.migrations import FORMAT, apply_pending
 
 
@@ -415,6 +416,26 @@ def cmd_migrate(args):
     return 0
 
 
+def cmd_complete_names(args):
+    """Print inventory names for shell completion (one per line). Silent migrate."""
+    data_dir = args.data_dir
+    try:
+        apply_pending(data_dir)
+    except (OSError, ValueError):
+        pass
+    names = set()
+    for path in (paths.software_path(data_dir), paths.dropped_path(data_dir),
+                 paths.versions_path(data_dir)):
+        try:
+            names.update(inventory.load(path, missing_ok=True))
+        except (OSError, ValueError):
+            continue
+    prefix = args.prefix or ''
+    for name in completion_names(prefix, names):
+        print(name)
+    return 0
+
+
 def cmd_reset(args):
     """Delete software.json, dropped.json and versions.json from the data directory."""
     existing = [p for p in paths.inventory_paths(args.data_dir) if p.exists()]
@@ -493,6 +514,19 @@ def build_parser():
 
     migrate = sub.add_parser('migrate', help='apply pending inventory format migrations')
     migrate.set_defaults(func=cmd_migrate)
+
+    complete = sub.add_parser('complete', help='helpers for shell completion')
+    complete_sub = complete.add_subparsers(dest='complete_command')
+
+    def _complete_usage(_args):
+        print('usage: vole complete names [prefix]', file=sys.stderr)
+        return 2
+
+    complete.set_defaults(func=_complete_usage)
+    cnames = complete_sub.add_parser('names', help='list inventory names (one per line)')
+    cnames.add_argument('prefix', nargs='?', default='',
+                        help='filter prefix / typo seed for Tab completion')
+    cnames.set_defaults(func=cmd_complete_names)
 
     reset = sub.add_parser('reset', help='delete all inventory data (software, dropped, versions)')
     reset.add_argument('--force', action='store_true',

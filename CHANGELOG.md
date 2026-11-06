@@ -4,9 +4,12 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
 ### Added
 
-- Case-insensitive apps search.
+- Case-insensitive name matching for CLI verbs (exact match first; unique CI match; several hits → `did you mean`). `add` / `list` unchanged.
+- zsh Tab completion (`completions/_vole`): subcommands + live inventory names via `vole complete names`; optional 1-edit typo candidates on Tab; `install.sh` installs to `~/.zsh/completions`.
 
 ## [0.2.1] - 2026-10-15
 

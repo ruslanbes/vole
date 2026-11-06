@@ -74,6 +74,10 @@ if [ -n "$SRC" ]; then
   mkdir -p "$TMP/src"
   # Copy only what the runtime needs (not .git, tests, personal data).
   cp -R "$SRC/vole" "$TMP/src/vole"
+  if [ -f "$SRC/completions/_vole" ]; then
+    mkdir -p "$TMP/src/completions"
+    cp "$SRC/completions/_vole" "$TMP/src/completions/_vole"
+  fi
   STAGE=$TMP/src
 else
   echo "downloading ${REPO_URL} @ ${BRANCH}…"
@@ -108,11 +112,22 @@ chmod 755 "$BIN_DIR/vole"
 # Smoke check
 "$BIN_DIR/vole" --help >/dev/null || die "installed vole failed to run"
 
+# zsh completion (dynamic names via `vole complete names`)
+ZSH_COMP_DIR="${VOLE_ZSH_COMPLETIONS:-$HOME/.zsh/completions}"
+if [ -f "$STAGE/completions/_vole" ]; then
+  echo "installing zsh completion → $ZSH_COMP_DIR/_vole"
+  mkdir -p "$ZSH_COMP_DIR"
+  cp "$STAGE/completions/_vole" "$ZSH_COMP_DIR/_vole"
+fi
+
 echo
 echo "vole installed."
 echo "  package:  $LIB_DIR/vole"
 echo "  command:  $BIN_DIR/vole"
 echo "  data:     \$HOME/.config/vole/  (created on first scan)"
+if [ -f "$ZSH_COMP_DIR/_vole" ]; then
+  echo "  zsh comp: $ZSH_COMP_DIR/_vole"
+fi
 echo
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -122,6 +137,12 @@ case ":$PATH:" in
     echo
     ;;
 esac
+if [ -f "$ZSH_COMP_DIR/_vole" ]; then
+  echo "For zsh Tab completion, ensure your ~/.zshrc has:"
+  echo "  fpath=(\$HOME/.zsh/completions \$fpath)"
+  echo "  autoload -Uz compinit && compinit"
+  echo
+fi
 echo "Try:"
 echo "  vole scan            # scan and create the inventory"
 echo "  vole scan --dry-run  # preview without writing"

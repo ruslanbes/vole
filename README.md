@@ -58,8 +58,17 @@ curl -fsSL https://raw.githubusercontent.com/ruslanbes/vole/main/install.sh | sh
 
 Curl puts the CLI on `~/.local/bin` (add that directory to your `PATH` if needed). Needs
 macOS with Command Line Tools `python3` 3.9+. Re-run anytime to refresh from `main`.
+`install.sh` also installs zsh completion to `~/.zsh/completions/_vole`. Add to `~/.zshrc`
+if needed:
+
+```sh
+fpath=($HOME/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
 
 Or from a clone: `./install.sh`, or run `bin/vole` / `python3 -m vole` without installing.
+For completion from a clone without install, symlink `completions/_vole` into
+`~/.zsh/completions/` (or add the repo `completions/` dir to `fpath`).
 
 ## Use
 
@@ -80,6 +89,7 @@ vole add NAME                # create, or restore from dropped and set fields
 vole restore NAME            # move from dropped.json back to software.json
 vole purge NAME              # permanently remove (asks first; --force to skip)
 vole reset                   # delete all inventory data (asks first; --force to skip)
+vole complete names [prefix] # inventory names for shell Tab completion
 ```
 
 `vole scan` archives entries that are no longer installed (reason kept in `dropped.json`).

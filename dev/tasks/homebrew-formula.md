@@ -64,6 +64,8 @@ flowchart LR
 - Create tap: `brew tap-new ruslanbes/homebrew-vole`, push to GitHub.
 - `Formula/vole.rb`: `url`/`sha256` pointing at a tagged vole release archive on `ruslanbes/vole`; install the `vole/` package + launcher (mirror what `install.sh` does, brew-style).
 - Depends on macOS + a `python@3.9`+ or uses system `python3` — decide in formula to match the 3.9 floor.
+- Install zsh completion from upstream `completions/_vole` into Homebrew’s zsh completion
+  dir (e.g. `#{zsh_completion}/_vole`) so Tab works after `brew install` without a manual copy.
 - README Install: `brew install ruslanbes/vole/vole` (and note curl fallback).
 - Optional: GitHub Actions in the tap for bottles later — not required for v1.
 
