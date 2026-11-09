@@ -150,15 +150,24 @@ class TestCompleteNames(unittest.TestCase):
         try:
             inventory.save(d / 'software.json', {
                 'Google Chrome': {'why': 'x', 'added': '2026-01-01', 'status': 'active'},
+                'Google Docs': {'why': 'x', 'added': '2026-01-01', 'status': 'active'},
                 'jq': {'why': 'y', 'added': '2026-01-01', 'status': 'active'},
             })
             r = run_vole('complete', 'names', 'google', data_dir=d)
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), 'Google Chrome')
+            self.assertEqual(r.stdout.strip().splitlines(),
+                             ['Google Chrome', 'Google Docs'])
+            r = run_vole('complete', 'names', 'Google Do', data_dir=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), 'Google Docs')
+            # Typed zsh-style escape must still match.
+            r = run_vole('complete', 'names', 'Google\\ Do', data_dir=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), 'Google Docs')
             r = run_vole('complete', 'names', data_dir=d)
             self.assertEqual(r.returncode, 0, r.stderr)
             lines = r.stdout.strip().splitlines()
-            self.assertEqual(lines, ['Google Chrome', 'jq'])
+            self.assertEqual(lines, ['Google Chrome', 'Google Docs', 'jq'])
         finally:
             shutil.rmtree(d)
 

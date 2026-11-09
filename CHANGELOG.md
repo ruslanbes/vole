@@ -4,11 +4,17 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-09
+
+### Fixed
+
+- zsh completion for multi-word names after a shared prefix (e.g. `Google\ ` → `Google Docs`).
+
 ## [0.3.1] - 2026-11-06
 
 ### Fixed
 
-- CI runners pinned to `ubuntu-24.04` so the Python 3.9 floor still runs (`ubuntu-latest` / 26.04 no longer provides it).
+- CI runners pinned to `ubuntu-24.04` so the Python 3.9 still runs.
 
 ## [0.3.0] - 2026-11-06
 

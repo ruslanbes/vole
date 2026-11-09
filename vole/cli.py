@@ -430,7 +430,8 @@ def cmd_complete_names(args):
             names.update(inventory.load(path, missing_ok=True))
         except (OSError, ValueError):
             continue
-    prefix = args.prefix or ''
+    # zsh may pass typed escapes (Google\ Do); normalize before matching.
+    prefix = (args.prefix or '').replace('\\', '')
     for name in completion_names(prefix, names):
         print(name)
     return 0

@@ -3,12 +3,48 @@
 # Installed to ~/.zsh/completions (curl/install.sh) or Homebrew's zsh completion dir.
 
 _vole_names() {
-  local -a names
-  local prefix=${words[CURRENT]}
-  # Drop a leading dash so we don't treat flags as name prefixes.
+  # Inventory names may contain spaces. After Tab inserts a shared prefix like
+  # "Google\ ", zsh often splits the next keystrokes into a new word (CURRENT>2).
+  # Rebuild the typed name from word 2 through CURRENT and complete against that.
+  local name_start=2
+  (( CURRENT < name_start )) && return 0
+
+  local prefix
+  if (( CURRENT == name_start )); then
+    prefix=$words[CURRENT]
+  else
+    prefix=${(j: :)words[name_start,CURRENT]}
+  fi
+  # Typed escapes (Google\ Do) must not reach the matcher.
+  prefix=${prefix//\\/}
   [[ $prefix == -* ]] && return 0
+
+  local -a names
   names=(${(f)"$(command vole complete names -- "$prefix" 2>/dev/null)"})
-  (( $#names )) && compadd -a names
+  (( $#names )) || return 0
+
+  if (( CURRENT == name_start )); then
+    # Still one shell word — insert the full name, quoted if needed.
+    compadd -Q -- "${names[@]}"
+    return
+  fi
+
+  # Continuation after a split: complete only the remainder of the current word
+  # (e.g. words: Google + Do → offer "Docs" so the line becomes Google Docs).
+  local head="${(j: :)words[name_start,CURRENT-1]} "
+  local -a tails
+  local n
+  for n in $names; do
+    if [[ $n == ${head}* ]]; then
+      tails+=("${n#$head}")
+    fi
+  done
+  if (( $#tails )); then
+    compadd -Q -- "${tails[@]}"
+  else
+    # Fallback: replace the whole name span with a single matched token.
+    compadd -U -Q -- "${names[@]}"
+  fi
 }
 
 _vole() {
@@ -45,12 +81,12 @@ _vole() {
     args)
       case ${words[1]} in
         get|why|keep|drop|restore|add)
-          if (( CURRENT == 2 )); then
+          if (( CURRENT >= 2 )); then
             _vole_names
           fi
           ;;
         purge)
-          if (( CURRENT == 2 )); then
+          if (( CURRENT >= 2 )); then
             _vole_names
           else
             _arguments '--force[skip confirmation]'
