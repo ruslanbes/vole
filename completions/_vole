@@ -3,48 +3,33 @@
 # Installed to ~/.zsh/completions (curl/install.sh) or Homebrew's zsh completion dir.
 
 _vole_names() {
-  # Inventory names may contain spaces. After Tab inserts a shared prefix like
-  # "Google\ ", zsh often splits the next keystrokes into a new word (CURRENT>2).
-  # Rebuild the typed name from word 2 through CURRENT and complete against that.
+  # Inventory names may contain spaces. The CLI takes a single argv token, so
+  # the completed name must stay one shell word (quoted / backslash-escaped).
+  # After Tab on a shared prefix like "Google\ ", zsh may still split later
+  # keystrokes into extra words (CURRENT>2) — collapse those before matching.
   local name_start=2
   (( CURRENT < name_start )) && return 0
 
-  local prefix
-  if (( CURRENT == name_start )); then
-    prefix=$words[CURRENT]
-  else
-    prefix=${(j: :)words[name_start,CURRENT]}
+  if (( CURRENT > name_start )); then
+    local joined=${(j: :)words[name_start,CURRENT]}
+    joined=${joined//\\/}
+    words=( "${(@)words[1,name_start-1]}" "$joined" "${(@)words[CURRENT+1,-1]}" )
+    CURRENT=$name_start
   fi
-  # Typed escapes (Google\ Do) must not reach the matcher.
-  prefix=${prefix//\\/}
+
+  # Typed escapes (Google\ Do) must not reach the matcher or PREFIX compare.
+  words[CURRENT]=${words[CURRENT]//\\/}
+  local prefix=$words[CURRENT]
+  PREFIX=$prefix
+  SUFFIX=''
   [[ $prefix == -* ]] && return 0
 
   local -a names
   names=(${(f)"$(command vole complete names -- "$prefix" 2>/dev/null)"})
   (( $#names )) || return 0
 
-  if (( CURRENT == name_start )); then
-    # Still one shell word — insert the full name, quoted if needed.
-    compadd -Q -- "${names[@]}"
-    return
-  fi
-
-  # Continuation after a split: complete only the remainder of the current word
-  # (e.g. words: Google + Do → offer "Docs" so the line becomes Google Docs).
-  local head="${(j: :)words[name_start,CURRENT-1]} "
-  local -a tails
-  local n
-  for n in $names; do
-    if [[ $n == ${head}* ]]; then
-      tails+=("${n#$head}")
-    fi
-  done
-  if (( $#tails )); then
-    compadd -Q -- "${tails[@]}"
-  else
-    # Fallback: replace the whole name span with a single matched token.
-    compadd -U -Q -- "${names[@]}"
-  fi
+  # No -Q: let zsh quote spaces so the line stays one argv token.
+  compadd -- "${names[@]}"
 }
 
 _vole() {

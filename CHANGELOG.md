@@ -4,11 +4,17 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-09
+
+### Fixed
+
+- zsh completion inserts multi-word names as one shell word (quoted / escaped) so the CLI receives the full name.
+
 ## [0.3.2] - 2026-11-09
 
 ### Fixed
 
-- zsh completion for multi-word names after a shared prefix (e.g. `Google\ ` → `Google Docs`).
+- zsh completion continues multi-word names after a shared prefix (e.g. `Google\ ` → `Google Docs`).
 
 ## [0.3.1] - 2026-11-06
 
