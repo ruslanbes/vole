@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-11-10
+Last updated: 2026-11-24
 
 ## Current focus
 
-Optional next features after autoscan.
+Optional next features after undo / glob.
 
 ## Active task
 
@@ -20,6 +20,7 @@ _None._
 
 ## Session notes
 
+- 2026-11-24: `vole undo` (stack depth 20); `name-glob` for why/keep.
 - 2026-11-10: Implemented `vole autoscan` (launchd, free-form schedule, pinned vole + data dir, Logs file).
 - 2026-11-09: `0.3.3` — zsh completion inserts multi-word names as one shell word.
 - 2026-11-09: `0.3.2` — zsh completion continues multi-word names after a shared prefix; Homebrew formula bumped.

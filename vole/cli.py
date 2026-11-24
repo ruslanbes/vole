@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from vole import __version__, autoscan, inventory, paths, scan
+from vole import __version__, autoscan, inventory, paths, scan, undo
 from vole.complete import completion_names
 from vole.migrations import FORMAT, apply_pending
 
@@ -88,6 +88,27 @@ def _resolve_or_fail(cmd, query, where, *maps):
         return None
     _no_entry(cmd, query, where, maps)
     return None
+
+
+def _resolve_write_targets(cmd, query, inv):
+    """Names for why-write / keep: glob → all matches; else single resolve.
+
+    Returns a list, or None after printing an error (caller exits 1).
+    When ``query`` is a glob, prints each matched name before returning.
+    """
+    if inventory.is_glob_pattern(query):
+        hits = inventory.match_glob(query, inv.apps, inv.archived)
+        if not hits:
+            print(f'{cmd}: no entries matching {query!r} in {inv.both_names()}',
+                  file=sys.stderr)
+            return None
+        for name in hits:
+            print(name)
+        return hits
+    name = _resolve_or_fail(cmd, query, inv.both_names(), inv.apps, inv.archived)
+    if name is None:
+        return None
+    return [name]
 
 
 def _apply(cmd, entry, fields):
@@ -217,8 +238,12 @@ def cmd_list(args):
     return 0
 
 
-def _edit(args):
-    """Shared write path for why / keep / drop (not a user-facing command)."""
+def _edit(args, names=None):
+    """Shared write path for why / keep / drop (not a user-facing command).
+
+    ``names`` — optional pre-resolved targets (why-write / keep glob). When omitted,
+    resolves ``args.name`` as a single entry (drop and non-glob keep/why).
+    """
     verb = getattr(args, 'verb', 'edit')
     inv = _Inventory(args.data_dir)
     if not inv.software.exists() and not inv.dropped.exists():
@@ -230,34 +255,43 @@ def _edit(args):
         print(f'{verb}: nothing to set', file=sys.stderr)
         return 2
 
-    name = _resolve_or_fail(verb, args.name, inv.both_names(), inv.apps, inv.archived)
-    if name is None:
-        return 1
-    where = inv.where(name)
-    before = inv.get(name)
-    entry = _apply(verb, before, fields)
-    if entry is None:
-        return 2
-    removed = [f for f, v in fields.items() if v == '' and f in before]
+    if names is None:
+        name = _resolve_or_fail(verb, args.name, inv.both_names(), inv.apps, inv.archived)
+        if name is None:
+            return 1
+        names = [name]
 
-    if fields.get('status') == 'dropped':
-        entry = inventory.mark_user_drop(entry)
-    elif fields.get('status') == 'active':
-        entry = inventory.clear_archive_meta(entry)
+    frame = undo.checkpoint(args.data_dir, verb)
+    versions = None
+    for name in names:
+        where = inv.where(name)
+        before = inv.get(name)
+        entry = _apply(verb, before, fields)
+        if entry is None:
+            undo.discard_if_unchanged(args.data_dir, frame)
+            return 2
+        removed = [f for f, v in fields.items() if v == '' and f in before]
 
-    status = entry.get('status')
-    if where == 'software' and status == 'dropped':
-        versions = _load(paths.versions_path(args.data_dir), missing_ok=True)
-        entry = inventory.attach_drop_source(entry, name, versions)
-        inv.archive(name, entry)
-        header = f'{name} → archived in {inv.dropped.name}'
-    elif where == 'dropped' and status == 'active':
-        inv.restore(name, entry)
-        header = f'{name} → restored to {inv.software.name}'
-    else:
-        inv.put(name, entry)
-        header = None if where == 'software' else f'{name} (in {inv.dropped.name})'
-    _print_entry(name, entry, changed=fields, removed=removed, header=header)
+        if fields.get('status') == 'dropped':
+            entry = inventory.mark_user_drop(entry)
+        elif fields.get('status') == 'active':
+            entry = inventory.clear_archive_meta(entry)
+
+        status = entry.get('status')
+        if where == 'software' and status == 'dropped':
+            if versions is None:
+                versions = _load(paths.versions_path(args.data_dir), missing_ok=True)
+            entry = inventory.attach_drop_source(entry, name, versions)
+            inv.archive(name, entry)
+            header = f'{name} → archived in {inv.dropped.name}'
+        elif where == 'dropped' and status == 'active':
+            inv.restore(name, entry)
+            header = f'{name} → restored to {inv.software.name}'
+        else:
+            inv.put(name, entry)
+            header = None if where == 'software' else f'{name} (in {inv.dropped.name})'
+        _print_entry(name, entry, changed=fields, removed=removed, header=header)
+    undo.discard_if_unchanged(args.data_dir, frame)
     return 0
 
 
@@ -295,27 +329,38 @@ def cmd_get(args):
 
 
 def cmd_why(args):
-    """Print or set why — read is text-only; write reuses edit confirmation."""
+    """Print or set why — read is text-only; write supports ``*`` / ``?`` globs."""
     inv = _Inventory(args.data_dir)
     if not inv.software.exists() and not inv.dropped.exists():
         print(f'error: no inventory at {inv.software}', file=sys.stderr)
         return 1
-    name = _resolve_or_fail('why', args.name, inv.both_names(), inv.apps, inv.archived)
-    if name is None:
-        return 1
     if args.reason is None:
+        # Read path: single name only (no glob).
+        name = _resolve_or_fail('why', args.name, inv.both_names(), inv.apps, inv.archived)
+        if name is None:
+            return 1
         print(inv.get(name).get('why', ''))
         return 0
+    names = _resolve_write_targets('why', args.name, inv)
+    if names is None:
+        return 1
     return _edit(argparse.Namespace(
-        data_dir=args.data_dir, name=name, verb='why',
-        why=args.reason, keep=None, status=None))
+        data_dir=args.data_dir, name=args.name, verb='why',
+        why=args.reason, keep=None, status=None), names=names)
 
 
 def cmd_keep(args):
-    """Set keep — write only; reuses ``_edit`` confirmation."""
+    """Set keep — write only; supports ``*`` / ``?`` globs."""
+    inv = _Inventory(args.data_dir)
+    if not inv.software.exists() and not inv.dropped.exists():
+        print(f'error: no inventory at {inv.software}', file=sys.stderr)
+        return 1
+    names = _resolve_write_targets('keep', args.name, inv)
+    if names is None:
+        return 1
     return _edit(argparse.Namespace(
         data_dir=args.data_dir, name=args.name, verb='keep',
-        why=None, keep=args.reason, status=None))
+        why=None, keep=args.reason, status=None), names=names)
 
 
 def cmd_drop(args):
@@ -345,8 +390,10 @@ def cmd_restore(args):
     entry = _apply('restore', inv.archived[name], fields)
     if entry is None:
         return 2
+    frame = undo.checkpoint(args.data_dir, 'restore')
     entry = inventory.clear_archive_meta(entry)
     inv.restore(name, entry)
+    undo.discard_if_unchanged(args.data_dir, frame)
     _print_entry(name, entry, changed=fields,
                  header=f'{name} → restored to {inv.software.name}')
     return 0
@@ -365,8 +412,10 @@ def cmd_add(args):
         entry = _apply('add', inv.archived[name], changes)
         if entry is None:
             return 2
+        frame = undo.checkpoint(args.data_dir, 'add')
         entry = inventory.clear_archive_meta(entry)
         inv.restore(name, entry)
+        undo.discard_if_unchanged(args.data_dir, frame)
         _print_entry(name, entry, changed=changes,
                      header=f'{name} → restored to {inv.software.name} (add)')
         return 0
@@ -374,7 +423,9 @@ def cmd_add(args):
     entry = _apply('add', inventory.stub(datetime.date.today().isoformat()), fields)
     if entry is None:
         return 2
+    frame = undo.checkpoint(args.data_dir, 'add')
     inv.put(name, entry)
+    undo.discard_if_unchanged(args.data_dir, frame)
     _print_entry(name, entry, changed={'why', 'added', 'status', *fields},
                  header=f'{name} → added to {inv.software.name}')
     return 0
@@ -395,6 +446,7 @@ def cmd_purge(args):
     if not _confirm('purge', args.force):
         return 1
 
+    frame = undo.checkpoint(args.data_dir, 'purge')
     del store[name]
     inventory.save(path, store)
     print(f'purged {name!r} from {path.name}')
@@ -402,6 +454,7 @@ def cmd_purge(args):
         del versions[name]
         inventory.save(vpath, versions)
         print(f'purged {name!r} from {vpath.name}')
+    undo.discard_if_unchanged(args.data_dir, frame)
     return 0
 
 
@@ -412,7 +465,21 @@ def cmd_migrate(args):
     if not applied:
         print(f'already at format {before}')
         return 0
+    # Format bump invalidates prior checkpoints.
+    undo.clear(args.data_dir)
     print(f'now at format {FORMAT} ({len(applied)} step(s))')
+    return 0
+
+
+def cmd_undo(args):
+    """Restore the previous inventory checkpoint from the undo stack."""
+    try:
+        lines = undo.restore(args.data_dir, dry_run=args.dry_run)
+    except ValueError as e:
+        print(f'undo: {e}', file=sys.stderr)
+        return 1
+    for line in lines:
+        print(line)
     return 0
 
 
@@ -484,21 +551,28 @@ def cmd_autoscan(args):
 
 
 def cmd_reset(args):
-    """Delete software.json, dropped.json and versions.json from the data directory."""
+    """Delete inventory files and the undo stack from the data directory."""
     existing = [p for p in paths.inventory_paths(args.data_dir) if p.exists()]
-    if not existing:
+    undo_root = undo.undo_dir(args.data_dir)
+    has_undo = undo_root.exists()
+    if not existing and not has_undo:
         print(f'nothing to reset — no inventory files in {args.data_dir}')
         return 0
 
     print('This will permanently delete:')
     for p in existing:
         print(f'  {p}')
+    if has_undo:
+        print(f'  {undo_root} (undo stack; cannot be undone)')
     if not _confirm('reset', args.force):
         return 1
 
     for p in existing:
         p.unlink()
         print(f'deleted {p}')
+    if has_undo:
+        undo.clear(args.data_dir)
+        print(f'deleted {undo_root}')
     return 0
 
 
@@ -587,7 +661,13 @@ def build_parser():
     asched.set_defaults(func=cmd_autoscan)
     asub.add_parser('run', help=argparse.SUPPRESS).set_defaults(func=cmd_autoscan)
 
-    reset = sub.add_parser('reset', help='delete all inventory data (software, dropped, versions)')
+    und = sub.add_parser('undo', help='restore the previous inventory checkpoint')
+    und.add_argument('--dry-run', action='store_true',
+                     help='show what would be restored without applying')
+    und.set_defaults(func=cmd_undo)
+
+    reset = sub.add_parser('reset',
+                           help='delete inventory data and undo stack (cannot be undone)')
     reset.add_argument('--force', action='store_true',
                        help='skip the confirmation prompt')
     reset.set_defaults(func=cmd_reset)

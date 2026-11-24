@@ -36,6 +36,12 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - done_when: See `dev/tasks/cli-uninstall.md`.
 - notes: OQs open — may later rename `drop`→`uninstall`; keep DROP CANDIDATES language until then.
 
+## cli-undo
+- status: done
+- goal: `vole undo` restores inventory after the last mutating CLI write.
+- done_when: See `dev/tasks/cli-undo.md`.
+- notes: Shipped — stack depth 20 under `undo/`; interactive writes+scan; not autoscan; reset wipes.
+
 ## cli-autoscan
 - status: done
 - goal: `vole autoscan` on/off/schedule + status (next run); free-form schedules from CLI.
@@ -49,10 +55,10 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - notes: OQs open — after exact/CI; short-name guard; stdlib Levenshtein. Tab 1-edit is separate (shipped).
 
 ## name-glob
-- status: backlog
+- status: done
 - goal: `*` / `?` multi-name selection for batch why/keep (quoted patterns).
 - done_when: See `dev/tasks/name-glob.md`.
-- notes: **Deferred** — not next; OQs still open.
+- notes: Shipped — `why`/`keep` only; zero→fail; print matches then proceed; `*`/`?` only.
 
 ## detect-rosetta-apps
 - status: backlog

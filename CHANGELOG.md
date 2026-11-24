@@ -7,6 +7,8 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 ### Added
 
 - `vole autoscan` mode with schedule.
+- `why` / `keep` commands accept quoted `*` / `?` globs for multi-name writes.
+- `vole undo` for undoing unwanted changes (checkpoint time + compact inventory diff on undo / `--dry-run`).
 
 ## [0.3.3] - 2026-11-09
 

@@ -15,7 +15,7 @@ What it saves, in `~/.config/vole/` (or `$VOLE_DATA_DIR`): software names, where
 installed versions, the date vole first saw each one, a `last_used` date, and the `why` / `keep`
 notes you write. History lines and config contents are only used during a scan and are never saved.
 
-Optional `vole autoscan` installs a user LaunchAgent (`~/Library/LaunchAgents/com.ruslanbes.vole.autoscan.plist`)
-that runs write-mode `vole scan` on a schedule. It also writes `autoscan.json` under the data dir
-(schedule / on-off / pinned paths) and appends scan output to `~/Library/Logs/vole/autoscan.log`.
-No Notification Center alerts. Turn it off with `vole autoscan off`.
+
+Interactive inventory writes keep shadow copies under `~/.config/vole/undo/` (same personal
+notes as `software.json` / `dropped.json`, capped stack) so `vole undo` can restore them.
+`vole reset` deletes those copies along with the inventory.

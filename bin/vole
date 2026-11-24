@@ -3,7 +3,8 @@
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# realpath: when ~/.local/bin/vole → repo/bin/vole, abspath alone lands in ~/.local.
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, ROOT)
 from vole.cli import main  # noqa: E402
 

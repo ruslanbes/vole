@@ -207,19 +207,25 @@ def render(r: Report, *, tracked: int, installed: int, write: bool, had_baseline
     return '\n'.join(out) + '\n'
 
 
-def run(data_root: Path = None, home: Path = None, months: int = 6, write: bool = True) -> int:
+def run(data_root: Path = None, home: Path = None, months: int = 6,
+        write: bool = True, checkpoint: bool = True) -> int:
+    """Run a scan. ``checkpoint=False`` skips the undo stack (autoscan agent)."""
     data_root = data_root or paths.data_dir()
     home = Path(home or Path.home())
     software = paths.software_path(data_root)
     dropped = paths.dropped_path(data_root)
     vpath = paths.versions_path(data_root)
 
+    undo_frame = None
     if not software.exists():
         if not write:
             print(f'no inventory at {software} — run `vole scan` once (without --dry-run)',
                   file=sys.stderr)
             return 1
         paths.ensure_data_dir(data_root)
+        if checkpoint:
+            from vole import undo
+            undo_frame = undo.checkpoint(data_root, 'scan')
         inventory.save(software, {})
         print(f'created {software}', file=sys.stderr)
 
@@ -254,6 +260,9 @@ def run(data_root: Path = None, home: Path = None, months: int = 6, write: bool 
 
     had_baseline = vpath.exists()
     if write:
+        if checkpoint and undo_frame is None:
+            from vole import undo
+            undo_frame = undo.checkpoint(data_root, 'scan')
         apply_auto_moves(entries, archived, installed, report, versions=prev_versions)
         if report.new:
             for name, _src in report.new:
@@ -263,6 +272,9 @@ def run(data_root: Path = None, home: Path = None, months: int = 6, write: bool 
         inventory.save(dropped, archived)
         inventory.save(vpath, {n: {'source': s, 'versions': sorted(vs)}
                                for n, (s, vs) in installed.items()})
+        if undo_frame is not None:
+            from vole import undo
+            undo.discard_if_unchanged(data_root, undo_frame)
 
     print(render(report, tracked=len(entries), installed=len(installed),
                  write=write, had_baseline=had_baseline), end='')

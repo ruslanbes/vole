@@ -204,6 +204,38 @@ class TestResolveName(unittest.TestCase):
         self.assertEqual(hits, ['Alpha', 'ALPHA'])
 
 
+class TestMatchGlob(unittest.TestCase):
+    NAMES = {
+        'Google Chrome': {},
+        'Google Docs': {},
+        'Google Drive': {},
+        'go': {},
+        'jq': {},
+    }
+
+    def test_is_glob_pattern(self):
+        self.assertTrue(inventory.is_glob_pattern('Google*'))
+        self.assertTrue(inventory.is_glob_pattern('?q'))
+        self.assertFalse(inventory.is_glob_pattern('Google'))
+        self.assertFalse(inventory.is_glob_pattern(''))
+
+    def test_star_prefix_ci(self):
+        hits = inventory.match_glob('google*', self.NAMES)
+        self.assertEqual(hits, ['Google Chrome', 'Google Docs', 'Google Drive'])
+
+    def test_question_mark(self):
+        hits = inventory.match_glob('?q', self.NAMES)
+        self.assertEqual(hits, ['jq'])
+
+    def test_brackets_are_literal(self):
+        names = {'file[1]': {}, 'file1': {}}
+        self.assertEqual(inventory.match_glob('file[1]', names), ['file[1]'])
+        self.assertEqual(inventory.match_glob('file?', names), ['file1'])
+
+    def test_zero_matches(self):
+        self.assertEqual(inventory.match_glob('Nope*', self.NAMES), [])
+
+
 class TestCheckApps(unittest.TestCase):
     def test_fixtures_are_clean(self):
         for name, versions_file in (('software.json', False), ('versions.json', True)):
@@ -946,6 +978,46 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.parsed()['jq']['why'], 'JSON on the command line')
         self.assertIn('* why', r.stdout)
+
+    def test_why_glob_writes_all_matches(self):
+        apps = self.parsed()
+        for name in ('Google Chrome', 'Google Docs', 'Google Drive'):
+            apps[name] = {'why': 'x', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('why', 'Google*', 'workspace')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Matched names printed first, then each entry dump.
+        head = r.stdout.split('Google Chrome\n  ')[0]
+        self.assertEqual(
+            head.splitlines(),
+            ['Google Chrome', 'Google Docs', 'Google Drive'])
+        apps = self.parsed()
+        for name in ('Google Chrome', 'Google Docs', 'Google Drive'):
+            self.assertEqual(apps[name]['why'], 'workspace')
+
+    def test_why_glob_zero_matches(self):
+        r = self.vole('why', 'NoSuch*', 'x')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no entries matching', r.stderr)
+
+    def test_why_read_ignores_glob(self):
+        r = self.vole('why', 'Google*')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no entry named', r.stderr)
+
+    def test_keep_glob(self):
+        apps = self.parsed()
+        apps['Google Chrome'] = {
+            'why': 'x', 'added': '2026-01-01', 'status': 'active'}
+        apps['Google Docs'] = {
+            'why': 'x', 'added': '2026-01-01', 'status': 'active'}
+        inventory.save(self.d / 'software.json', apps)
+        r = self.vole('keep', 'Google*', 'mdm')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('Google Chrome\nGoogle Docs\n', r.stdout)
+        apps = self.parsed()
+        self.assertEqual(apps['Google Chrome']['keep'], 'mdm')
+        self.assertEqual(apps['Google Docs']['keep'], 'mdm')
 
     def test_why_empty_clears_like_edit(self):
         self.assertEqual(self.vole('why', 'jq', 'temporary').returncode, 0)

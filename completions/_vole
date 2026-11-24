@@ -50,6 +50,7 @@ _vole() {
     'purge:permanently remove an entry'
     'migrate:apply inventory format migrations'
     'autoscan:scheduled background scans'
+    'undo:restore previous inventory checkpoint'
     'complete:shell completion helpers'
     'reset:delete all inventory data'
   )
@@ -84,6 +85,9 @@ _vole() {
           _arguments \
             '--dry-run[report only]' \
             '--months[staleness months]:months:'
+          ;;
+        undo)
+          _arguments '--dry-run[show what would be restored]'
           ;;
         autoscan)
           if (( CURRENT == 2 )); then

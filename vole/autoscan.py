@@ -384,7 +384,7 @@ def record_run(data_root: Path, when: Optional[dt.datetime] = None) -> None:
 
 
 def run_scheduled(data_root: Path) -> int:
-    """Agent entry: write-mode scan, then stamp last_run."""
-    code = scan.run(data_root=data_root, months=6, write=True)
+    """Agent entry: write-mode scan, then stamp last_run (no undo checkpoint)."""
+    code = scan.run(data_root=data_root, months=6, write=True, checkpoint=False)
     record_run(data_root)
     return int(code)

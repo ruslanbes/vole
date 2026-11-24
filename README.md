@@ -83,7 +83,9 @@ vole get NAME                # all stored fields for one entry (no scan)
 vole migrate                 # apply pending inventory format migrations (also auto on load)
 vole why NAME                # print why (text only)
 vole why NAME "…"            # set why
+vole why 'Google*' "…"       # set why on all Google products (* and ?; quote the pattern)
 vole keep NAME "…"           # set keep (write only)
+vole keep 'Google*' "…"      # set keep on all Google products (quote the pattern)
 vole drop NAME               # archive (sticky while still installed)
 vole add NAME                # create, or restore from dropped and set fields
 vole restore NAME            # move from dropped.json back to software.json
@@ -92,7 +94,9 @@ vole autoscan                # scheduled scan status (on/off, schedule, next run
 vole autoscan on|off         # enable / disable LaunchAgent (default schedule: weekly)
 vole autoscan schedule       # print schedule
 vole autoscan schedule …     # set schedule and turn on (weekly|monthly|every N …)
-vole reset                   # delete all inventory data (asks first; --force to skip)
+vole undo                    # restore previous inventory checkpoint (stack depth 20)
+vole undo --dry-run          # show what undo would restore
+vole reset                   # delete inventory + undo stack (asks first; cannot be undone)
 vole complete names [prefix] # inventory names for shell Tab completion
 ```
 
@@ -103,14 +107,20 @@ drop or a bad auto-archive. `why` / `keep` work on archived rows too. Scan also 
 `last_used` date per entry (advanced only when a newer usage signal is seen) so DROP
 CANDIDATES survive shell-history rotation.
 
+`why` / `keep` can use `*` and `?` globs. Quote
+the pattern so the shell does not expand it against files (`vole why 'Google*' "…"`).
+
 Examples:
 
 ```sh
 vole get jq
 vole why jq
 vole why jq "JSON in shell scripts"
+vole why 'Google*' "workspace suite"
 vole keep imagemagick dependency
+vole keep 'Google*' mdm
 vole why imagemagick "thumbnails for the blog"
+vole undo
 vole drop old-tool
 vole restore old-tool
 vole add manual-bin --why "helper script"

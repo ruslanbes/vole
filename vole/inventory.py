@@ -1,6 +1,7 @@
 """Read and write the JSON inventory. Stdlib only, Python 3.9+."""
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -28,6 +29,19 @@ def name_sort_key(name: str):
     return (name.lower(), name)
 
 
+def _ordered_names(*maps) -> List[str]:
+    ordered: List[str] = []
+    seen = set()
+    for m in maps:
+        if not m:
+            continue
+        for key in m:
+            if key not in seen:
+                seen.add(key)
+                ordered.append(key)
+    return ordered
+
+
 def resolve_name(query: str, *maps):
     """Resolve an inventory name for CLI verbs (not ``add`` / ``list``).
 
@@ -38,15 +52,8 @@ def resolve_name(query: str, *maps):
     Returns ``(canonical, None)`` on success, ``(None, [hits…])`` when ambiguous,
     ``(None, None)`` when missing.
     """
-    ordered: List[str] = []
-    seen = set()
-    for m in maps:
-        if not m:
-            continue
-        for key in m:
-            if key not in seen:
-                seen.add(key)
-                ordered.append(key)
+    ordered = _ordered_names(*maps)
+    seen = set(ordered)
     if query in seen:
         return query, None
     folded = query.lower()
@@ -56,6 +63,31 @@ def resolve_name(query: str, *maps):
     if len(hits) > 1:
         return None, hits
     return None, None
+
+
+def is_glob_pattern(query: str) -> bool:
+    """True when the query uses ``*`` or ``?`` (v1 glob metacharacters only)."""
+    return '*' in query or '?' in query
+
+
+def _glob_regex(pattern: str):
+    """Compile a case-insensitive matcher; only ``*`` / ``?`` are special."""
+    parts = []
+    for ch in pattern:
+        if ch == '*':
+            parts.append('.*')
+        elif ch == '?':
+            parts.append('.')
+        else:
+            parts.append(re.escape(ch))
+    return re.compile('\\A' + ''.join(parts) + '\\Z', re.IGNORECASE)
+
+
+def match_glob(pattern: str, *maps) -> List[str]:
+    """Return inventory names matching ``pattern`` (``*`` / ``?`` only), sorted."""
+    rx = _glob_regex(pattern)
+    hits = [name for name in _ordered_names(*maps) if rx.match(name)]
+    return sorted(hits, key=name_sort_key)
 
 
 def render(apps, format: Optional[int] = None):
