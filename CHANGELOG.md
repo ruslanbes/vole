@@ -4,11 +4,18 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
 ### Added
 
-- `vole autoscan` mode with schedule.
-- `why` / `keep` commands accept quoted `*` / `?` globs for multi-name writes.
-- `vole undo` for undoing unwanted changes (checkpoint time + compact inventory diff on undo / `--dry-run`).
+- `vole autoscan` — scheduled write-mode scans via a user LaunchAgent (`on` / `off` / `schedule`).
+- `why` / `keep` accept quoted `*` / `?` globs for multi-name writes (print matches, then proceed).
+- `vole undo` — stack of shadow inventory checkpoints (depth 20) for interactive writes and scan; `--dry-run` shows time + compact diff; `reset` wipes the stack.
+
+### Fixed
+
+- `bin/vole` resolves symlinks so a PATH link (e.g. `~/.local/bin/vole`) still finds the package.
+- No-op writes (identical inventory) no longer leave empty undo checkpoints.
 
 ## [0.3.3] - 2026-11-09
 
