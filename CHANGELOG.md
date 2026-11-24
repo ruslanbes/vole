@@ -4,6 +4,10 @@ All notable changes to this project. Format based on [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Added
+
+- `vole autoscan` mode with schedule.
+
 ## [0.3.3] - 2026-11-09
 
 ### Fixed

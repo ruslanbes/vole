@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from vole import __version__, inventory, paths, scan
+from vole import __version__, autoscan, inventory, paths, scan
 from vole.complete import completion_names
 from vole.migrations import FORMAT, apply_pending
 
@@ -437,6 +437,52 @@ def cmd_complete_names(args):
     return 0
 
 
+def cmd_autoscan(args):
+    """Status / on / off / schedule / run (LaunchAgent-backed)."""
+    data_dir = args.data_dir
+    sub = getattr(args, 'autoscan_command', None)
+
+    if sub is None:
+        for line in autoscan.status_lines(data_dir):
+            print(line)
+        return 0
+
+    if sub == 'run':
+        return autoscan.run_scheduled(data_dir)
+
+    if sub == 'on':
+        try:
+            state = autoscan.enable(data_dir)
+        except ValueError as e:
+            print(f'autoscan on: {e}', file=sys.stderr)
+            return 1
+        print(f"autoscan: on ({state['schedule']})")
+        return 0
+
+    if sub == 'off':
+        autoscan.disable(data_dir)
+        print('autoscan: off')
+        return 0
+
+    if sub == 'schedule':
+        words = getattr(args, 'schedule_words', None) or []
+        if not words:
+            state = autoscan.load_state(data_dir)
+            print(state.get('schedule') or autoscan.DEFAULT_SCHEDULE)
+            return 0
+        phrase = ' '.join(words)
+        try:
+            state = autoscan.enable(data_dir, schedule_phrase=phrase)
+        except ValueError as e:
+            print(f'autoscan schedule: {e}', file=sys.stderr)
+            return 1
+        print(f"autoscan: on ({state['schedule']})")
+        return 0
+
+    print('usage: vole autoscan [on|off|schedule|run] …', file=sys.stderr)
+    return 2
+
+
 def cmd_reset(args):
     """Delete software.json, dropped.json and versions.json from the data directory."""
     existing = [p for p in paths.inventory_paths(args.data_dir) if p.exists()]
@@ -528,6 +574,18 @@ def build_parser():
     cnames.add_argument('prefix', nargs='?', default='',
                         help='filter prefix / typo seed for Tab completion')
     cnames.set_defaults(func=cmd_complete_names)
+
+    ascan = sub.add_parser('autoscan', help='scheduled background scans (launchd)')
+    ascan.set_defaults(func=cmd_autoscan, autoscan_command=None)
+    asub = ascan.add_subparsers(dest='autoscan_command')
+    asub.add_parser('on', help='enable (default schedule: weekly)').set_defaults(
+        func=cmd_autoscan)
+    asub.add_parser('off', help='disable').set_defaults(func=cmd_autoscan)
+    asched = asub.add_parser('schedule', help='print or set schedule (set also enables)')
+    asched.add_argument('schedule_words', nargs='*',
+                        help='e.g. weekly | every 3 days (omit to print)')
+    asched.set_defaults(func=cmd_autoscan)
+    asub.add_parser('run', help=argparse.SUPPRESS).set_defaults(func=cmd_autoscan)
 
     reset = sub.add_parser('reset', help='delete all inventory data (software, dropped, versions)')
     reset.add_argument('--force', action='store_true',

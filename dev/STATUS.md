@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## Current focus
 
-Optional next features after `0.3.3`.
+Optional next features after autoscan.
 
 ## Active task
 
@@ -16,10 +16,11 @@ _None._
 
 ## Next action
 
-1. Optional next features: `name-fuzzy-match`, `cli-autoscan`, sources (sdkman / IntelliJ JDKs), Rosetta detect.
+1. Optional next features: `name-fuzzy-match`, sources (sdkman / IntelliJ JDKs), Rosetta detect.
 
 ## Session notes
 
+- 2026-11-10: Implemented `vole autoscan` (launchd, free-form schedule, pinned vole + data dir, Logs file).
 - 2026-11-09: `0.3.3` — zsh completion inserts multi-word names as one shell word.
 - 2026-11-09: `0.3.2` — zsh completion continues multi-word names after a shared prefix; Homebrew formula bumped.
 - 2026-11-06: `0.3.1` — pin CI to ubuntu-24.04 after `v0.3.0` release job failed (no setup-python 3.9 on ubuntu-26.04).

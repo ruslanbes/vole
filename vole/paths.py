@@ -20,6 +20,10 @@ def dropped_path(root=None) -> Path:
 def versions_path(root=None) -> Path:
     return (root or data_dir()) / 'versions.json'
 
+
+def autoscan_path(root=None) -> Path:
+    return (root or data_dir()) / 'autoscan.json'
+
 def ensure_data_dir(root=None) -> Path:
     """Create the data dir owner-only (0700). An existing dir keeps its mode."""
     d = root or data_dir()

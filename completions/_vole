@@ -49,6 +49,7 @@ _vole() {
     'restore:restore from dropped.json'
     'purge:permanently remove an entry'
     'migrate:apply inventory format migrations'
+    'autoscan:scheduled background scans'
     'complete:shell completion helpers'
     'reset:delete all inventory data'
   )
@@ -83,6 +84,21 @@ _vole() {
           _arguments \
             '--dry-run[report only]' \
             '--months[staleness months]:months:'
+          ;;
+        autoscan)
+          if (( CURRENT == 2 )); then
+            local -a asubs
+            asubs=(
+              'on:enable autoscan'
+              'off:disable autoscan'
+              'schedule:print or set schedule'
+            )
+            _describe -t commands 'autoscan' asubs
+          elif [[ ${words[2]} == schedule && CURRENT == 3 ]]; then
+            local -a scheds
+            scheds=(weekly monthly 'every 1 day' 'every 3 days' 'every 12 hours')
+            _describe -t schedules 'schedule' scheds
+          fi
           ;;
         complete)
           if (( CURRENT == 2 )); then

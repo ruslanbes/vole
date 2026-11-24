@@ -88,6 +88,10 @@ vole drop NAME               # archive (sticky while still installed)
 vole add NAME                # create, or restore from dropped and set fields
 vole restore NAME            # move from dropped.json back to software.json
 vole purge NAME              # permanently remove (asks first; --force to skip)
+vole autoscan                # scheduled scan status (on/off, schedule, next run)
+vole autoscan on|off         # enable / disable LaunchAgent (default schedule: weekly)
+vole autoscan schedule       # print schedule
+vole autoscan schedule …     # set schedule and turn on (weekly|monthly|every N …)
 vole reset                   # delete all inventory data (asks first; --force to skip)
 vole complete names [prefix] # inventory names for shell Tab completion
 ```
@@ -112,6 +116,7 @@ vole restore old-tool
 vole add manual-bin --why "helper script"
 vole purge obsolete-thing --force
 vole list brew
+vole autoscan schedule weekly
 ```
 
 ## Use with agents

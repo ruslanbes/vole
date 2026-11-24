@@ -1,7 +1,7 @@
 # `vole autoscan` — scheduled background scans
 
 - **Task ID:** `cli-autoscan`
-- **Status:** backlog
+- **Status:** done
 - **Related:** `scan`, privacy (local-only), macOS launchd / scheduling
 
 ## Problem
@@ -18,19 +18,11 @@ A writeable, inspectable autoscan control surface — **all from the command lin
 vole autoscan                     # status (if on: schedule + next run)
 vole autoscan on                  # enable (uses current / default schedule)
 vole autoscan off                 # disable
-vole autoscan schedule weekly     # free-form schedule
+vole autoscan schedule            # print current schedule; change nothing
+vole autoscan schedule weekly     # set schedule and turn on
 vole autoscan schedule monthly
 vole autoscan schedule "every 3 days"
 vole autoscan schedule "every 10 minutes"
-```
-
-Combinations that should work without a TUI, e.g.:
-
-```sh
-vole autoscan on
-vole autoscan schedule weekly
-# or enable + set in one shot if we allow:
-vole autoscan on --schedule weekly   # OQ
 ```
 
 When autoscan is **on**, bare `vole autoscan` prints at least: on/off, the schedule
@@ -41,16 +33,16 @@ be stored for the next `on`).
 
 | # | Topic | Status | Decision |
 |---|--------|--------|----------|
-| 1 | Scheduler backend? | open | **Proposal:** user LaunchAgent (`launchd`) — macOS-native, survives reboot. Not cron unless we need Linux later |
-| 2 | Free-form schedule parsing? | open | Accept phrases like `weekly` / `monthly` / `every N days|hours|minutes`. Refuse unclear input with examples. Exact grammar TBD (library-free parser) |
-| 3 | Default schedule when `on` with none set? | open | **Proposal:** `weekly` (or refuse `on` until `schedule` is set) |
-| 4 | One-shot enable + schedule? | open | **Proposal:** allow `vole autoscan on --schedule "…"` and/or `schedule` implies keep current on/off |
-| 5 | What does a scheduled run execute? | open | **Proposal:** write-mode `vole scan` (same as interactive). Optional later: `--dry-run` only — not v1 |
-| 6 | Where is state stored? | open | **Proposal:** small file under `~/.config/vole/` (e.g. `autoscan.json`: on/off, schedule string, last/next) + LaunchAgent plist vole owns |
-| 7 | How is “next run” computed? | open | From schedule + last run (or launchd NextCalendarInterval / StartInterval). Show local time in status |
-| 8 | Output / notifications on scheduled scan? | open | **Proposal v1:** log to a file under the data dir (or `~/Library/Logs/vole/`); no Notification Center yet |
-| 9 | Path to `vole` in the agent? | open | Pin absolute path at `on` time (brew Cellar / `~/.local/bin` / which). Warn if binary moves |
-| 10 | Interaction with `VOLE_DATA_DIR`? | open | Agent should pass the same data dir the user used when enabling, or always default `~/.config/vole/` |
+| 1 | Scheduler backend? | locked | User LaunchAgent (`launchd`) — macOS-native, survives reboot. Not cron in v1 |
+| 2 | Free-form schedule parsing? | locked | Yes — accept phrases like `weekly` / `monthly` / `every N days\|hours\|minutes`. Refuse unclear input with examples. Exact grammar TBD (library-free parser) |
+| 3 | Default schedule when `on` with none set? | locked | `weekly` |
+| 4 | One-shot enable + schedule? | locked | `vole autoscan schedule` with no args prints the current schedule and changes nothing. Passing a schedule **sets on implicitly** (no `on --schedule`) |
+| 5 | What does a scheduled run execute? | locked | Write-mode `vole scan` (same as interactive). No dry-run agent in v1 |
+| 6 | Where is state stored? | locked | `~/.config/vole/autoscan.json` (on/off, schedule string, last/next as needed) + LaunchAgent plist vole owns (`~/Library/LaunchAgents/…`) |
+| 7 | How is “next run” computed? | locked | From schedule + last run (and/or launchd timing). Status shows **local** time |
+| 8 | Output / notifications on scheduled scan? | locked | Log file only — **no Notification Center**. Location: `~/Library/Logs/vole/autoscan.log` (keeps scan noise out of the curated data dir; macOS-conventional for agents) |
+| 9 | Path to `vole` in the agent? | locked | Pin absolute path at `on` / `schedule <expr>` time (brew Cellar / `~/.local/bin` / `which`). Warn if binary moves |
+| 10 | Interaction with `VOLE_DATA_DIR`? | locked | Pin the data dir in effect when enabling (`--data-dir` / `$VOLE_DATA_DIR`) into the agent so scheduled scans use that inventory |
 
 ## Non-goals
 
@@ -63,21 +55,22 @@ be stored for the next `on`).
 ## Implementation (sketch)
 
 - CLI subparser `autoscan` with optional subcommands `on` / `off` / `schedule`.
-- Bare `autoscan` → status printer.
+- Bare `autoscan` → status printer; bare `schedule` → print schedule only.
 - Schedule parser → normalized interval or calendar rule → LaunchAgent plist fields.
-- `on` installs/loads agent; `off` unloads/disables; `schedule` rewrites plist + state file.
+- `on` installs/loads agent; `off` unloads/disables; `schedule <expr>` rewrites plist + state and turns on; scheduled job runs write-mode `vole scan`.
 - Status reads state file + best-effort next fire time from launchd or computed locally.
 
 ## Done when
 
-- [ ] `vole autoscan` / `on` / `off` / `schedule …` work entirely from the CLI.
-- [ ] Free-form schedules covering weekly, monthly, every N days/hours/minutes (as locked).
-- [ ] Status shows on/off; when on, schedule + next run.
-- [ ] Scheduled runs invoke write-mode scan (or whatever OQ5 locks) without user interaction.
-- [ ] README + PRIVACY note if the agent/log surface expands what vole touches.
-- [ ] Tests for schedule parsing + status shape; agent install smoke-tested on macOS.
+- [x] `vole autoscan` / `on` / `off` / `schedule …` work entirely from the CLI.
+- [x] Free-form schedules covering weekly, monthly, every N days/hours/minutes (as locked).
+- [x] Status shows on/off; when on, schedule + next run.
+- [x] Scheduled runs invoke write-mode scan (or whatever OQ5 locks) without user interaction.
+- [x] README + PRIVACY note if the agent/log surface expands what vole touches.
+- [x] Tests for schedule parsing + status shape; agent install smoke-tested on macOS.
 
 ## Notes
 
 - Pair with DROP CANDIDATES / `last_used`: background scan keeps staleness current without nagging the user to remember `scan`.
 - Keep agent identity stable (label like `com.ruslanbes.vole.autoscan`) so `off`/`on` are idempotent.
+- Implementation: `vole/autoscan.py`; agent entry `vole autoscan run` (hidden); test hooks `VOLE_AUTOSCAN_SKIP_LAUNCHCTL` / `_LOG` / `_PLIST`.

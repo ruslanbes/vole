@@ -37,10 +37,10 @@ Detail lives in `dev/tasks/<task-id>.md` when needed.
 - notes: OQs open — may later rename `drop`→`uninstall`; keep DROP CANDIDATES language until then.
 
 ## cli-autoscan
-- status: backlog
+- status: done
 - goal: `vole autoscan` on/off/schedule + status (next run); free-form schedules from CLI.
 - done_when: See `dev/tasks/cli-autoscan.md`.
-- notes: OQs open — launchd proposed; weekly/monthly/every N …; bare autoscan = status.
+- notes: Shipped — launchd LaunchAgent; weekly default; `schedule` set⇒on; log under `~/Library/Logs/vole/`.
 
 ## name-fuzzy-match
 - status: backlog
